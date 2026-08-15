@@ -281,6 +281,93 @@ def load_adapters() -> List[str]:
         return []
 
 
+# --------------------------------------------------------------------------
+# Shell / alias helpers
+# --------------------------------------------------------------------------
+
+def detect_user_shell() -> str:
+    """Return the user's login shell binary path (e.g. /bin/bash, /bin/zsh)."""
+    shell = os.environ.get("SHELL", "")
+    if shell:
+        return shell
+    try:
+        import pwd
+        return pwd.getpwuid(os.getuid()).pw_shell or "/bin/sh"
+    except Exception:
+        return "/bin/sh"
+
+
+def shell_rc_file(shell: str) -> str:
+    """Return the primary rc file path for the given shell binary."""
+    name = os.path.basename(shell)
+    rc_map = {
+        "bash":  os.path.expanduser("~/.bashrc"),
+        "zsh":   os.path.expanduser("~/.zshrc"),
+        "fish":  os.path.expanduser("~/.config/fish/config.fish"),
+        "ksh":   os.path.expanduser("~/.kshrc"),
+        "dash":  os.path.expanduser("~/.dashrc"),
+    }
+    return rc_map.get(name, os.path.expanduser("~/.bashrc"))
+
+
+def load_shell_aliases(shell: str) -> dict:
+    """Ask the user's shell to dump all its aliases and return them as a dict."""
+    try:
+        # -i = interactive (sources rc), -c 'alias' prints all aliases
+        result = subprocess.run(
+            [shell, "-i", "-c", "alias"],
+            capture_output=True, text=True, timeout=5,
+            env={**os.environ, "PS1": "_"}   # suppress PS1 noise
+        )
+        aliases = {}
+        for line in result.stdout.splitlines():
+            # Formats:  alias ll='ls -la'   OR   ll='ls -la'
+            line = line.strip()
+            if line.startswith("alias "):
+                line = line[6:]
+            if "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip("'\"")
+            if key:
+                aliases[key] = val
+        return aliases
+    except Exception:
+        return {}
+
+
+def expand_aliases(line: str, aliases: dict) -> str:
+    """Expand the first token of a command line if it matches a known alias."""
+    if not aliases:
+        return line
+    try:
+        tokens = shlex.split(line)
+    except ValueError:
+        return line
+    if not tokens:
+        return line
+    head = tokens[0]
+    if head in aliases:
+        expanded = aliases[head]
+        rest = " ".join(shlex.quote(t) for t in tokens[1:])
+        return (expanded + " " + rest).strip() if rest else expanded
+    return line
+
+
+def write_alias_to_rc(shell: str, name: str, value: str) -> str:
+    """Append an alias definition to the user's rc file. Returns the rc path."""
+    rc = shell_rc_file(shell)
+    shell_name = os.path.basename(shell)
+    if shell_name == "fish":
+        line = f"\nabbr --add {name} '{value}'\n"
+    else:
+        line = f"\nalias {name}='{value}'\n"
+    with open(rc, "a") as f:
+        f.write(line)
+    return rc
+
+
 class BackgroundNames:
     """Loads a (possibly slow) name list in the background so startup and
     the prompt never block on it. Reads of `.names` are safe without a lock
@@ -420,6 +507,11 @@ def build_commands(manager: Optional[str], names) -> dict:
             needs_arg=False,
             arg_completions=names["path"],
             arg_completion_kind="path",
+        ),
+        "alias": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Add a shell alias interactively (auto-detects your shell)",
+            needs_arg=False,
         ),
         "ip": Command(
             run=lambda _: ["ip", "-c=always", "a"],
@@ -614,7 +706,12 @@ def print_help(commands: dict, manager: Optional[str]):
 # --------------------------------------------------------------------------
 
 def main():
+    # Clear the terminal on startup for a clean slate
+    os.system("clear")
+
     manager = detect_package_manager()
+    shell = detect_user_shell()
+    aliases = load_shell_aliases(shell)
 
     services = load_service_names()
     installed_pkgs = load_installed_packages(manager)               # fast enough to load synchronously
@@ -730,9 +827,10 @@ def main():
                     + ", ".join(f"[bold]{m}[/bold]" for m in ambiguous)
                 )
             else:
-                # Fallback: run as a raw Linux command
+                # Fallback: expand aliases then run as a raw shell command
+                expanded = expand_aliases(line, aliases)
                 try:
-                    subprocess.run(line, shell=True)
+                    subprocess.run(expanded, shell=True, executable=shell)
                 except Exception as e:
                     console.print(f"[red]Command failed: {e}[/red]")
             continue
@@ -795,6 +893,38 @@ def main():
                 console.print(f"[green]→ {os.getcwd()}[/green]")
             except OSError as e:
                 console.print(f"[red]{e}[/red]")
+            continue
+
+        if name == "alias":
+            shell_name = os.path.basename(shell)
+            rc = shell_rc_file(shell)
+            try:
+                console.print(f"\n[bold cyan]Alias Wizard[/bold cyan]  (shell: [green]{shell_name}[/green]  •  rc: [dim]{rc}[/dim])")
+                alias_name = prompt(
+                    [("class:prompt", "Alias name (shortcut): ")],
+                    completer=DummyCompleter(), style=style
+                ).strip()
+                if not alias_name:
+                    console.print("[red]Alias name cannot be empty. Aborting.[/red]")
+                    continue
+                if " " in alias_name:
+                    console.print("[red]Alias name must not contain spaces. Aborting.[/red]")
+                    continue
+                alias_val = prompt(
+                    [("class:prompt", f"Command for '{alias_name}': ")],
+                    completer=DummyCompleter(), style=style
+                ).strip()
+                if not alias_val:
+                    console.print("[red]Command cannot be empty. Aborting.[/red]")
+                    continue
+
+                rc_path = write_alias_to_rc(shell, alias_name, alias_val)
+                # Also register it live for this session
+                aliases[alias_name] = alias_val
+                console.print(f"[bold green]Alias added![/bold green] [cyan]{alias_name}[/cyan] → [yellow]{alias_val}[/yellow]")
+                console.print(f"[dim]Saved to {rc_path} — run 'source {rc_path}' in a new terminal to apply globally.[/dim]")
+            except KeyboardInterrupt:
+                console.print("\n[dim]Cancelled.[/dim]")
             continue
 
         if name == "netconfig":
