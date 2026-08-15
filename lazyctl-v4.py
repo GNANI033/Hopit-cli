@@ -40,6 +40,8 @@ import shlex
 import shutil
 import subprocess
 import threading
+import getpass
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -182,6 +184,19 @@ def detect_editor() -> Optional[str]:
     for editor in ("nano", "vim", "vi", "micro", "ne", "joe", "emacs"):
         if shutil.which(editor):
             return editor
+    return None
+
+
+def get_git_branch() -> Optional[str]:
+    """Return the current git branch name if we are inside a git repository."""
+    try:
+        proc = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True, timeout=0.1)
+        if proc.returncode == 0:
+            branch = proc.stdout.strip()
+            if branch:
+                return branch
+    except Exception:
+        pass
     return None
 
 
@@ -591,7 +606,17 @@ def main():
     completer = LazyCompleter(commands)
 
     style = Style.from_dict({
-        "prompt": "bold ansigreen",
+        "lazyctl": "bg:#f38ba8 fg:#1e1e2e bold",
+        "lazyctl_sep": "fg:#f38ba8 bg:#fab387",
+        "user": "bg:#fab387 fg:#1e1e2e bold",
+        "user_sep": "fg:#fab387 bg:#a6e3a1",
+        "cwd": "bg:#a6e3a1 fg:#1e1e2e bold",
+        "cwd_sep": "fg:#a6e3a1 bg:#89b4fa",
+        "cwd_sep_git": "fg:#a6e3a1 bg:#cba6f7",
+        "git": "bg:#cba6f7 fg:#1e1e2e bold",
+        "git_sep": "fg:#cba6f7 bg:#89b4fa",
+        "time": "bg:#89b4fa fg:#1e1e2e bold",
+        "time_sep": "fg:#89b4fa",
         "bottom-toolbar": "bg:#222222 #aaaaaa",
     })
 
@@ -620,7 +645,37 @@ def main():
             cwd = os.getcwd()
             home = os.path.expanduser("~")
             display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
-            line = session.prompt([("class:prompt", f"lazyctl {display_cwd}> ")]).strip()
+            
+            user = getpass.getuser()
+            now = datetime.now().strftime("%H:%M")
+            branch = get_git_branch()
+            
+            sep = "\ue0b0"
+            
+            prompt_fragments = [
+                ("class:lazyctl", " ⚡ lazyctl "),
+                ("class:lazyctl_sep", sep),
+                ("class:user", f" 👤 {user} "),
+                ("class:user_sep", sep),
+                ("class:cwd", f" 📁 {display_cwd} "),
+            ]
+            
+            if branch:
+                prompt_fragments.extend([
+                    ("class:cwd_sep_git", sep),
+                    ("class:git", f"  {branch} "),
+                    ("class:git_sep", sep),
+                ])
+            else:
+                prompt_fragments.append(("class:cwd_sep", sep))
+                
+            prompt_fragments.extend([
+                ("class:time", f" 🕒 {now} "),
+                ("class:time_sep", sep),
+                ("", " "),
+            ])
+            
+            line = session.prompt(prompt_fragments).strip()
         except EOFError:
             break
         except KeyboardInterrupt:
