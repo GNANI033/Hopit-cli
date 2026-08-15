@@ -526,6 +526,20 @@ def build_commands(manager: Optional[str], names) -> dict:
             arg_completions=names["adapter"],
             arg_completion_kind="adapter",
         ),
+        "port": Command(
+            run=lambda arg: [
+                "bash", "-c",
+                "ss -tulnp | awk -v port=" + shlex.quote(arg) + " "
+                + shlex.quote(
+                    'NR==1 || $0 ~ (":" port "[[:space:]]")'
+                    if arg.isdigit() else
+                    'NR==1 || tolower($0) ~ tolower(port)'
+                )
+            ],
+            desc="Show which program is using a port (by port number or program name)",
+            needs_sudo=True,
+            mode="capture",
+        ),
         "open": Command(
             run=lambda path: [],  # handled specially in main loop
             desc="Open a folder (cd) or file (nano); no arg shows cwd",
