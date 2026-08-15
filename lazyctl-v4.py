@@ -125,14 +125,14 @@ MANAGER_PKG = {
         "install": lambda pkg: ["dnf", "install", "-y", pkg],
         "remove": lambda pkg: ["dnf", "remove", "-y", pkg],
         "installed_cmd": ["rpm", "-qa", "--qf", "%{NAME}\n"],
-        "available_cmd": ["dnf", "-q", "repoquery", "--available", "--qf", "%{NAME}\n"],
+        "available_cmd": ["dnf", "-q", "repoquery", "--available", "--cacheonly", "--qf", "%{NAME}\n"],
         "available_parse": None,
     },
     "yum": {
         "install": lambda pkg: ["yum", "install", "-y", pkg],
         "remove": lambda pkg: ["yum", "remove", "-y", pkg],
         "installed_cmd": ["rpm", "-qa", "--qf", "%{NAME}\n"],
-        "available_cmd": ["yum", "-q", "list", "available"],
+        "available_cmd": ["yum", "-q", "list", "available", "--cacheonly"],
         "available_parse": "yum",  # needs special header/column parsing
     },
     "pacman": {
@@ -634,7 +634,6 @@ def main():
         history=InMemoryHistory(),
         completer=completer,
         complete_while_typing=True,
-        complete_in_thread=True,
         style=style,
         bottom_toolbar=bottom_toolbar,
     )
