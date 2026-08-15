@@ -87,6 +87,7 @@ MIN_ARG_PREFIX_CHARS = {
     "available_pkg": 2,
     "installed_pkg": 1,
     "service": 0,
+    "path": 0,
 }
 
 
@@ -241,6 +242,14 @@ def load_available_packages(manager: Optional[str]) -> List[str]:
     return sorted(set(l.strip() for l in lines if l.strip()))
 
 
+def load_path_entries() -> List[str]:
+    """List files and directories in the current working directory."""
+    try:
+        return sorted(os.listdir("."))
+    except OSError:
+        return []
+
+
 class BackgroundNames:
     """Loads a (possibly slow) name list in the background so startup and
     the prompt never block on it. Reads of `.names` are safe without a lock
@@ -364,6 +373,22 @@ def build_commands(manager: Optional[str], names) -> dict:
             needs_arg=False,
             needs_sudo=True,
             mode="stream",
+        ),
+        "list": Command(
+            run=lambda arg: ["ls", "-la", "--color=always"] if arg.lower() == "all"
+                            else (["ls", "--color=always", arg] if arg else ["ls", "--color=always"]),
+            desc="List directory contents ('list all' for detailed view)",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "open": Command(
+            run=lambda path: [],  # handled specially in main loop
+            desc="Open a folder (cd) or file (xdg-open); no arg shows cwd",
+            needs_arg=False,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
         ),
     }
 
@@ -530,6 +555,7 @@ def main():
         "service": lambda: services,
         "installed_pkg": lambda: installed_pkgs,
         "available_pkg": available_pkgs_holder.get,
+        "path": load_path_entries,
     }
 
     commands = build_commands(manager, names)
@@ -563,7 +589,10 @@ def main():
 
     while True:
         try:
-            line = session.prompt([("class:prompt", "lazyctl> ")]).strip()
+            cwd = os.getcwd()
+            home = os.path.expanduser("~")
+            display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
+            line = session.prompt([("class:prompt", f"lazyctl {display_cwd}> ")]).strip()
         except EOFError:
             break
         except KeyboardInterrupt:
@@ -589,7 +618,11 @@ def main():
                     + ", ".join(f"[bold]{m}[/bold]" for m in ambiguous)
                 )
             else:
-                console.print(f"[red]Unknown command: '{head}'.[/red] Type 'help' to see what's available.")
+                # Fallback: run as a raw Linux command
+                try:
+                    subprocess.run(line, shell=True)
+                except Exception as e:
+                    console.print(f"[red]Command failed: {e}[/red]")
             continue
 
         if name == "help":
@@ -600,6 +633,26 @@ def main():
             continue
         if name in ("exit", "quit"):
             break
+
+        if name == "open":
+            if not rest:
+                console.print(f"[cyan]📂 {os.getcwd()}[/cyan]")
+            else:
+                target = os.path.expanduser(rest[0])
+                if os.path.isdir(target):
+                    try:
+                        os.chdir(target)
+                        console.print(f"[green]→ {os.getcwd()}[/green]")
+                    except OSError as e:
+                        console.print(f"[red]{e}[/red]")
+                elif os.path.isfile(target):
+                    try:
+                        subprocess.run(["xdg-open", target])
+                    except FileNotFoundError:
+                        console.print(f"[red]'xdg-open' not found — cannot open files.[/red]")
+                else:
+                    console.print(f"[red]'{rest[0]}' — no such file or directory.[/red]")
+            continue
 
         cmd = commands[name]
 
