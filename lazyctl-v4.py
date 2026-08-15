@@ -177,6 +177,14 @@ def read_os_pretty_name() -> str:
     return "unknown distro"
 
 
+def detect_editor() -> Optional[str]:
+    """Return the first available text editor, preferring nano."""
+    for editor in ("nano", "vim", "vi", "micro", "ne", "joe", "emacs"):
+        if shutil.which(editor):
+            return editor
+    return None
+
+
 def with_privilege(argv: List[str], needs_sudo: bool) -> List[str]:
     if needs_sudo and os.geteuid() != 0:
         return ["sudo"] + argv
@@ -385,10 +393,15 @@ def build_commands(manager: Optional[str], names) -> dict:
         ),
         "open": Command(
             run=lambda path: [],  # handled specially in main loop
-            desc="Open a folder (cd) or file (xdg-open); no arg shows cwd",
+            desc="Open a folder (cd) or file (nano); no arg shows cwd",
             needs_arg=False,
             arg_completions=names["path"],
             arg_completion_kind="path",
+        ),
+        "back": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Go back to parent directory (cd ..)",
+            needs_arg=False,
         ),
     }
 
@@ -459,7 +472,7 @@ def completion_matches(text_before_cursor: str, commands: dict, all_names: List[
         return []
 
     cmd = commands[resolved]
-    if not cmd.needs_arg or not cmd.arg_completions:
+    if not cmd.arg_completions:
         return []
 
     word = words[-1]
@@ -484,12 +497,27 @@ class LazyCompleter(Completer):
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
-        word = text.split(" ")[-1]
+        words = text.split(" ")
+        word = words[-1]
         matches = completion_matches(text, self.commands, self.all_names)
 
+        # Detect if we're completing a path-type argument
+        arg_kind = None
+        if len(words) > 1:
+            head = words[0].lower()
+            resolved, _ = resolve_command(self.all_names, head)
+            if resolved and resolved in self.commands:
+                arg_kind = self.commands[resolved].arg_completion_kind
+
         for match in matches:
-            cmd = self.commands.get(match)
-            meta = cmd.desc if cmd else BUILTIN_DESCRIPTIONS.get(match, "")
+            if arg_kind == "path":
+                if os.path.isdir(match):
+                    meta = "📁 folder"
+                else:
+                    meta = "📄 file"
+            else:
+                cmd = self.commands.get(match)
+                meta = cmd.desc if cmd else BUILTIN_DESCRIPTIONS.get(match, "")
             yield Completion(match, start_position=-len(word), display_meta=meta)
 
 
@@ -646,12 +674,32 @@ def main():
                     except OSError as e:
                         console.print(f"[red]{e}[/red]")
                 elif os.path.isfile(target):
+                    # Check for "in <editor>" syntax: open file in vim
+                    editor = None
+                    if len(rest) >= 3 and rest[1].lower() == "in":
+                        editor = rest[2]
+                        if not shutil.which(editor):
+                            console.print(f"[red]Editor '{editor}' not found on this system.[/red]")
+                            continue
+                    if not editor:
+                        editor = detect_editor()
+                    if not editor:
+                        console.print(f"[red]No text editor found (tried nano, vim, vi, micro).[/red]")
+                        continue
                     try:
-                        subprocess.run(["xdg-open", target])
+                        subprocess.run([editor, target])
                     except FileNotFoundError:
-                        console.print(f"[red]'xdg-open' not found — cannot open files.[/red]")
+                        console.print(f"[red]'{editor}' not found.[/red]")
                 else:
                     console.print(f"[red]'{rest[0]}' — no such file or directory.[/red]")
+            continue
+
+        if name == "back":
+            try:
+                os.chdir("..")
+                console.print(f"[green]→ {os.getcwd()}[/green]")
+            except OSError as e:
+                console.print(f"[red]{e}[/red]")
             continue
 
         cmd = commands[name]
