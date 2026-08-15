@@ -45,8 +45,8 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
-from prompt_toolkit import PromptSession
-from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit import PromptSession, prompt
+from prompt_toolkit.completion import Completer, Completion, WordCompleter, DummyCompleter
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.styles import Style
 from prompt_toolkit.formatted_text import HTML
@@ -273,6 +273,14 @@ def load_path_entries() -> List[str]:
         return []
 
 
+def load_adapters() -> List[str]:
+    """List network adapters on the system."""
+    try:
+        return sorted(os.listdir('/sys/class/net/'))
+    except OSError:
+        return []
+
+
 class BackgroundNames:
     """Loads a (possibly slow) name list in the background so startup and
     the prompt never block on it. Reads of `.names` are safe without a lock
@@ -412,6 +420,19 @@ def build_commands(manager: Optional[str], names) -> dict:
             needs_arg=False,
             arg_completions=names["path"],
             arg_completion_kind="path",
+        ),
+        "ip": Command(
+            run=lambda _: ["ip", "-c=always", "a"],
+            desc="Show IP addresses and network interfaces",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "netconfig": Command(
+            run=lambda adapter: [],  # handled specially in main loop
+            desc="Interactively configure DHCP/Static IP for an adapter",
+            needs_arg=True,
+            arg_completions=names["adapter"],
+            arg_completion_kind="adapter",
         ),
         "open": Command(
             run=lambda path: [],  # handled specially in main loop
@@ -560,7 +581,8 @@ def render_result(proc: subprocess.CompletedProcess, label: str):
     else:
         border = "cyan"
 
-    console.print(Panel(output or "(no output)", title=label, border_style=border, expand=False))
+    content = Text.from_ansi(output) if output else "(no output)"
+    console.print(Panel(content, title=label, border_style=border, expand=False))
 
 
 def print_help(commands: dict, manager: Optional[str]):
@@ -606,6 +628,7 @@ def main():
         "installed_pkg": lambda: installed_pkgs,
         "available_pkg": available_pkgs_holder.get,
         "path": load_path_entries,
+        "adapter": load_adapters,
     }
 
     commands = build_commands(manager, names)
@@ -772,6 +795,88 @@ def main():
                 console.print(f"[green]→ {os.getcwd()}[/green]")
             except OSError as e:
                 console.print(f"[red]{e}[/red]")
+            continue
+
+        if name == "netconfig":
+            if not rest:
+                console.print("[yellow]Please specify an adapter, e.g., 'netconfig eth0'[/yellow]")
+                continue
+            adapter = rest[0]
+            if not os.path.exists(f"/sys/class/net/{adapter}"):
+                console.print(f"[red]Adapter '{adapter}' not found on this system.[/red]")
+                continue
+                
+            if not shutil.which("nmcli"):
+                console.print("[red]NetworkManager (nmcli) is not installed. Currently, only NetworkManager is supported for this feature.[/red]")
+                continue
+
+            conn_name = None
+            try:
+                out = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE", "con", "show"], capture_output=True, text=True)
+                for line in out.stdout.splitlines():
+                    if ":" in line:
+                        cname, dev = line.split(":", 1)
+                        if dev == adapter:
+                            conn_name = cname
+                            break
+            except Exception:
+                pass
+                
+            try:
+                console.print(f"\n[bold cyan]Configuring {adapter}[/bold cyan] (Current connection profile: {conn_name or 'none'})")
+                
+                mode_completer = WordCompleter(["dhcp", "static", "up", "down"], ignore_case=True)
+                mode = prompt([("class:prompt", "Action [dhcp/static/up/down]: ")], completer=mode_completer, style=style).strip().lower()
+                
+                if mode not in ("dhcp", "static", "up", "down"):
+                    console.print("[red]Invalid action. Aborting.[/red]")
+                    continue
+                
+                if not conn_name:
+                    if mode in ("up", "down"):
+                        console.print(f"[red]Cannot bring {mode} a non-existent connection. Please use dhcp or static first.[/red]")
+                        continue
+                    console.print("[yellow]No existing connection found. Creating a new one...[/yellow]")
+                    subprocess.run(with_privilege(["nmcli", "con", "add", "type", "ethernet", "ifname", adapter, "con-name", adapter], True), check=True)
+                    conn_name = adapter
+                
+                if mode == "up":
+                    console.print(f"[green]Bringing up {conn_name}...[/green]")
+                    subprocess.run(with_privilege(["nmcli", "con", "up", conn_name], True))
+                    console.print("[bold green]Done.[/bold green]")
+                elif mode == "down":
+                    console.print(f"[yellow]Bringing down {conn_name}...[/yellow]")
+                    subprocess.run(with_privilege(["nmcli", "con", "down", conn_name], True))
+                    console.print("[bold yellow]Done.[/bold yellow]")
+                elif mode == "dhcp":
+                    console.print(f"[green]Applying DHCP to {conn_name}...[/green]")
+                    subprocess.run(with_privilege(["nmcli", "con", "mod", conn_name, "ipv4.method", "auto"], True), check=True)
+                    subprocess.run(with_privilege(["nmcli", "con", "up", conn_name], True))
+                    console.print("[bold green]Success![/bold green]")
+                else:
+                    empty = DummyCompleter()
+                    ip_addr = prompt([("class:prompt", "IP Address with subnet (e.g. 192.168.1.50/24): ")], completer=empty, style=style).strip()
+                    gw = prompt([("class:prompt", "Gateway (e.g. 192.168.1.1): ")], completer=empty, style=style).strip()
+                    dns = prompt([("class:prompt", "DNS (e.g. 8.8.8.8): ")], completer=empty, style=style).strip()
+                    
+                    if not ip_addr:
+                        console.print("[red]IP address is required. Aborting.[/red]")
+                        continue
+                        
+                    cmds = ["nmcli", "con", "mod", conn_name, "ipv4.method", "manual", "ipv4.addresses", ip_addr]
+                    if gw:
+                        cmds.extend(["ipv4.gateway", gw])
+                    if dns:
+                        cmds.extend(["ipv4.dns", dns])
+                        
+                    console.print(f"[green]Applying static IP to {conn_name}...[/green]")
+                    subprocess.run(with_privilege(cmds, True), check=True)
+                    subprocess.run(with_privilege(["nmcli", "con", "up", conn_name], True))
+                    console.print("[bold green]Success![/bold green]")
+            except subprocess.CalledProcessError as e:
+                console.print(f"[red]NetworkManager error: {e}[/red]")
+            except KeyboardInterrupt:
+                console.print("\n[dim]Cancelled.[/dim]")
             continue
 
         cmd = commands[name]
