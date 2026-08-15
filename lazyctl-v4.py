@@ -406,6 +406,13 @@ def build_commands(manager: Optional[str], names) -> dict:
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),
+        "cd": Command(
+            run=lambda path: [],  # handled specially in main loop
+            desc="Change directory",
+            needs_arg=False,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
         "open": Command(
             run=lambda path: [],  # handled specially in main loop
             desc="Open a folder (cd) or file (nano); no arg shows cwd",
@@ -653,11 +660,11 @@ def main():
             sep = "\ue0b0"
             
             prompt_fragments = [
-                ("class:lazyctl", " ⚡ lazyctl "),
+                ("class:lazyctl", " lazyctl "),
                 ("class:lazyctl_sep", sep),
-                ("class:user", f" 👤 {user} "),
+                ("class:user", f" {user} "),
                 ("class:user_sep", sep),
-                ("class:cwd", f" 📁 {display_cwd} "),
+                ("class:cwd", f" {display_cwd} "),
             ]
             
             if branch:
@@ -670,7 +677,7 @@ def main():
                 prompt_fragments.append(("class:cwd_sep", sep))
                 
             prompt_fragments.extend([
-                ("class:time", f" 🕒 {now} "),
+                ("class:time", f" {now} "),
                 ("class:time_sep", sep),
                 ("", " "),
             ])
@@ -717,9 +724,17 @@ def main():
         if name in ("exit", "quit"):
             break
 
-        if name == "open":
+        if name in ("open", "cd"):
             if not rest:
-                console.print(f"[cyan]📂 {os.getcwd()}[/cyan]")
+                if name == "cd":
+                    target = os.path.expanduser("~")
+                    try:
+                        os.chdir(target)
+                        console.print(f"[green]→ {os.getcwd()}[/green]")
+                    except OSError as e:
+                        console.print(f"[red]{e}[/red]")
+                else:
+                    console.print(f"[cyan]📂 {os.getcwd()}[/cyan]")
             else:
                 target = os.path.expanduser(rest[0])
                 if os.path.isdir(target):
@@ -729,22 +744,25 @@ def main():
                     except OSError as e:
                         console.print(f"[red]{e}[/red]")
                 elif os.path.isfile(target):
-                    # Check for "in <editor>" syntax: open file in vim
-                    editor = None
-                    if len(rest) >= 3 and rest[1].lower() == "in":
-                        editor = rest[2]
-                        if not shutil.which(editor):
-                            console.print(f"[red]Editor '{editor}' not found on this system.[/red]")
+                    if name == "cd":
+                        console.print(f"[red]'{target}' is not a directory.[/red]")
+                    else:
+                        # Check for "in <editor>" syntax: open file in vim
+                        editor = None
+                        if len(rest) >= 3 and rest[1].lower() == "in":
+                            editor = rest[2]
+                            if not shutil.which(editor):
+                                console.print(f"[red]Editor '{editor}' not found on this system.[/red]")
+                                continue
+                        if not editor:
+                            editor = detect_editor()
+                        if not editor:
+                            console.print(f"[red]No text editor found (tried nano, vim, vi, micro).[/red]")
                             continue
-                    if not editor:
-                        editor = detect_editor()
-                    if not editor:
-                        console.print(f"[red]No text editor found (tried nano, vim, vi, micro).[/red]")
-                        continue
-                    try:
-                        subprocess.run([editor, target])
-                    except FileNotFoundError:
-                        console.print(f"[red]'{editor}' not found.[/red]")
+                        try:
+                            subprocess.run([editor, target])
+                        except FileNotFoundError:
+                            console.print(f"[red]'{editor}' not found.[/red]")
                 else:
                     console.print(f"[red]'{rest[0]}' — no such file or directory.[/red]")
             continue
