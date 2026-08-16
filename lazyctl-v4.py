@@ -540,6 +540,47 @@ def build_commands(manager: Optional[str], names) -> dict:
             needs_sudo=True,
             mode="capture",
         ),
+        "containers": Command(
+            run=lambda _: [
+                "bash", "-c",
+                r'''
+found=0
+if command -v docker >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== DOCKER CONTAINERS ==\033[0m\n'
+    docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' \
+        | awk -F'\t' 'BEGIN{printf "\033[1;4m%-20s %-25s %-20s %s\033[0m\n","NAME","IMAGE","STATUS","PORTS"}
+                      {c=($3~/^Up/)?"32":"31"; printf "\033[%sm%-20s\033[0m %-25s %-20s %s\n",c,$1,$2,$3,$4}'
+    echo
+fi
+if command -v pct >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== PROXMOX LXC CONTAINERS ==\033[0m\n'
+    pct list
+    echo
+fi
+if command -v qm >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== PROXMOX VMs ==\033[0m\n'
+    qm list
+    echo
+fi
+if command -v vim-cmd >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== ESXI VMs ==\033[0m\n'
+    vim-cmd vmsvc/getallvms
+    echo
+fi
+if [ "$found" -eq 0 ]; then
+    printf '\033[31mNo supported platform detected (docker, proxmox pct/qm, esxi vim-cmd).\033[0m\n'
+fi
+'''
+            ],
+            desc="Auto-detect and list containers/VMs (Docker, Proxmox LXC/VM, ESXi)",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="capture",
+        ),
         "open": Command(
             run=lambda path: [],  # handled specially in main loop
             desc="Open a folder (cd) or file (nano); no arg shows cwd",
