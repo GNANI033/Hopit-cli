@@ -555,8 +555,21 @@ def show_context_help(words: list[str], commands: dict):
             table.add_row("[green]block <port> [proto] [iface] [name][/green]", "Block incoming traffic on port")
             table.add_row("[green]delete <ID_or_port>[/green]", "Delete a specific firewall rule by ID or port")
             console.print(Panel(table, title=title, border_style="cyan", expand=False))
-        elif subcmd in ("allow", "block") and len(rest) == 0:
-            console.print(Panel("[yellow]<port>[/yellow]  Specify the port number to allow/block", title=title, border_style="cyan", expand=False))
+        elif subcmd in ("allow", "block"):
+            if len(rest) == 0:
+                console.print(Panel("[yellow]<port>[/yellow]  Specify the port number or range (e.g. 80, 22, 8080-8090)", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                table = Table(show_header=False, box=None, padding=(0, 2))
+                table.add_row("[green]tcp[/green]", "Transmission Control Protocol (Default)")
+                table.add_row("[green]udp[/green]", "User Datagram Protocol")
+                table.add_row("[green]both[/green]", "Both TCP and UDP protocols")
+                console.print(Panel(table, title=f"{title} — Select Protocol (Optional)", border_style="cyan", expand=False))
+            elif len(rest) == 2:
+                console.print(Panel("[yellow][adapter][/yellow]  (Optional) Specify target network interface (e.g. all, eth0, wlan0)", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 3:
+                console.print(Panel("[yellow][rule_name][/yellow]  (Optional) Specify custom label for this rule (e.g. Web-Server, SSH-Rule)", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         elif subcmd in ("delete", "remove") and len(rest) == 0:
             console.print(Panel("[yellow]<ID_or_port>[/yellow]  Specify the Rule ID number (from firewall status) or port to delete", title=title, border_style="cyan", expand=False))
         else:
