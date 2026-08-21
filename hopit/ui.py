@@ -181,10 +181,104 @@ def get_git_completions(words: list[str]) -> list[tuple[str, str]]:
     return []
 
 
+def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tuple[str, str]]:
+    if len(words) < 2:
+        return []
+    cmd = words[0].lower()
+    
+    if cmd == "user":
+        if len(words) == 2:
+            user_subs = {
+                "add": "Add a new system user",
+                "remove": "Delete a system user",
+                "delete": "Delete a system user",
+                "passwd": "Change a user's password",
+                "password": "Change a user's password",
+                "join": "Add a user to a group",
+                "list": "List system users",
+            }
+            return [(k, v) for k, v in user_subs.items()]
+            
+        sub = words[1].lower()
+        word = words[-1]
+        
+        if sub in ("remove", "delete", "passwd", "password"):
+            from hopit.loaders import load_users
+            users = load_users()
+            return [(u, "👤 user") for u in users]
+            
+        elif sub == "join":
+            if len(words) == 3:
+                from hopit.loaders import load_groups
+                groups = load_groups()
+                return [(g, "👥 group") for g in groups]
+            elif len(words) == 4:
+                from hopit.loaders import load_users
+                users = load_users()
+                return [(u, "👤 user") for u in users]
+                
+    elif cmd == "group":
+        if len(words) == 2:
+            group_subs = {
+                "add": "Add a new system group",
+                "remove": "Delete a system group",
+                "delete": "Delete a system group",
+                "list": "List system groups",
+            }
+            return [(k, v) for k, v in group_subs.items()]
+            
+        sub = words[1].lower()
+        if sub in ("remove", "delete"):
+            from hopit.loaders import load_groups
+            groups = load_groups()
+            return [(g, "👥 group") for g in groups]
+            
+    elif cmd in ("permission", "permissions"):
+        if len(words) == 2:
+            perm_subs = {
+                "set": "Set read/write/execute permissions (chmod)",
+                "owner": "Change owner of file/folder (chown)",
+                "group": "Change group of file/folder (chgrp)",
+            }
+            return [(k, v) for k, v in perm_subs.items()]
+            
+        sub = words[1].lower()
+        word = words[-1]
+        if sub == "set":
+            if len(words) == 3:
+                return [("755", "rwxr-xr-x"), ("644", "rw-r--r--"), ("700", "rwx------"), ("+x", "make executable")]
+            elif len(words) >= 4:
+                from hopit.loaders import load_path_entries
+                paths = load_path_entries(word)
+                return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+                
+        elif sub == "owner":
+            if len(words) == 3:
+                from hopit.loaders import load_users
+                users = load_users()
+                return [(u, "👤 user") for u in users]
+            elif len(words) >= 4:
+                from hopit.loaders import load_path_entries
+                paths = load_path_entries(word)
+                return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+                
+        elif sub == "group":
+            if len(words) == 3:
+                from hopit.loaders import load_groups
+                groups = load_groups()
+                return [(g, "👥 group") for g in groups]
+            elif len(words) >= 4:
+                from hopit.loaders import load_path_entries
+                paths = load_path_entries(word)
+                return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+                
+    return []
+
+
 class LazyCompleter(Completer):
     def __init__(self, commands: dict):
         self.commands = commands
-        self.all_names = list(commands.keys()) + list(BUILTIN_DESCRIPTIONS.keys())
+        self.all_names = [k for k in commands if k != "permissions"] + list(BUILTIN_DESCRIPTIONS.keys())
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -196,11 +290,25 @@ class LazyCompleter(Completer):
         if len(words) > 1:
             head = words[0].lower()
             resolved, _ = resolve_command(self.all_names, head)
+            if head == "permissions":
+                resolved = "permission"
             if resolved == "git":
                 git_candidates = get_git_completions(words)
                 word_lower = word.lower()
                 matches = []
                 for cand, meta in git_candidates:
+                    if cand.lower().startswith(word_lower):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
+                return
+            elif resolved in ("user", "group", "permission", "permissions"):
+                candidates = get_user_group_perm_completions(words, self.commands)
+                word_lower = word.lower()
+                matches = []
+                for cand, meta in candidates:
                     if cand.lower().startswith(word_lower):
                         matches.append((cand, meta))
                         if len(matches) >= MAX_ARG_COMPLETIONS:

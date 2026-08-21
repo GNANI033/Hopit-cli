@@ -378,6 +378,68 @@ def groupdel_cmd(arg: str) -> list[str]:
     return ["groupdel"] + args
 
 
+def user_cmd(arg: str) -> list[str]:
+    args = shlex.split(arg)
+    if not args:
+        return []
+    sub = args[0].lower()
+    rest = args[1:]
+    
+    if sub == "add":
+        return useradd_cmd(" ".join(rest))
+    elif sub in ("remove", "delete"):
+        return userdel_cmd(" ".join(rest))
+    elif sub in ("passwd", "password"):
+        return passwd_cmd(" ".join(rest))
+    elif sub == "join":
+        if len(rest) >= 2:
+            return usermod_cmd(f"-aG {rest[0]} {rest[1]}")
+        return []
+    elif sub == "list":
+        if IS_WINDOWS:
+            return ["net", "user"]
+        if IS_MACOS:
+            return ["dscl", ".", "list", "/Users"]
+        return ["cut", "-d:", "-f1", "/etc/passwd"]
+    return []
+
+
+def group_cmd(arg: str) -> list[str]:
+    args = shlex.split(arg)
+    if not args:
+        return []
+    sub = args[0].lower()
+    rest = args[1:]
+    
+    if sub == "add":
+        return groupadd_cmd(" ".join(rest))
+    elif sub in ("remove", "delete"):
+        return groupdel_cmd(" ".join(rest))
+    elif sub == "list":
+        if IS_WINDOWS:
+            return ["net", "localgroup"]
+        if IS_MACOS:
+            return ["dscl", ".", "list", "/Groups"]
+        return ["cut", "-d:", "-f1", "/etc/group"]
+    return []
+
+
+def permission_cmd(arg: str) -> list[str]:
+    args = shlex.split(arg)
+    if not args:
+        return []
+    sub = args[0].lower()
+    rest = args[1:]
+    
+    if sub == "set":
+        return chmod_cmd(" ".join(rest))
+    elif sub == "owner":
+        return chown_cmd(" ".join(rest))
+    elif sub == "group":
+        return chgrp_cmd(" ".join(rest))
+    return []
+
+
 def build_commands(manager: str | None, names: dict) -> dict:
     """`names` is a dict of zero-arg/one-arg callables returning current candidate
     lists: {"service": ..., "installed_pkg": ..., "available_pkg": ...}"""
@@ -676,6 +738,34 @@ def build_commands(manager: str | None, names: dict) -> dict:
             mode="stream",
             arg_completions=names["group"],
             arg_completion_kind="group",
+        ),
+        "user": Command(
+            run=user_cmd,
+            desc="Manage system user accounts: user [add|remove|passwd|join|list]",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "group": Command(
+            run=group_cmd,
+            desc="Manage system groups: group [add|remove|list]",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "permission": Command(
+            run=permission_cmd,
+            desc="Manage file and folder permissions: permission [set|owner|group]",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "permissions": Command(
+            run=permission_cmd,
+            desc="Manage file and folder permissions: permissions [set|owner|group]",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
         ),
     }
 

@@ -351,8 +351,15 @@ def load_users() -> list[str]:
         with open("/etc/passwd", "r") as f:
             for line in f:
                 parts = line.split(":")
-                if parts and parts[0].strip():
-                    users.append(parts[0].strip())
+                if len(parts) >= 3:
+                    username = parts[0].strip()
+                    try:
+                        uid = int(parts[2].strip())
+                        # Keep root (0) and standard users (>= 1000)
+                        if uid == 0 or uid >= 1000:
+                            users.append(username)
+                    except ValueError:
+                        users.append(username)
         return sorted(users)
     except OSError:
         return []
@@ -390,8 +397,14 @@ def load_groups() -> list[str]:
         with open("/etc/group", "r") as f:
             for line in f:
                 parts = line.split(":")
-                if parts and parts[0].strip():
-                    groups.append(parts[0].strip())
+                if len(parts) >= 3:
+                    groupname = parts[0].strip()
+                    try:
+                        gid = int(parts[2].strip())
+                        if gid == 0 or gid >= 1000 or groupname in ("wheel", "sudo", "docker", "admin", "adm", "staff"):
+                            groups.append(groupname)
+                    except ValueError:
+                        groups.append(groupname)
         return sorted(groups)
     except OSError:
         return []

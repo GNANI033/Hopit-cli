@@ -12,6 +12,11 @@ from hopit.translation import (
     translate_groupdel_to_windows,
     translate_win_net_to_unix,
 )
+from hopit.commands import (
+    user_cmd,
+    group_cmd,
+    permission_cmd,
+)
 
 class TestUserPermsTranslation(unittest.TestCase):
     def test_chmod_to_windows(self):
@@ -86,6 +91,26 @@ class TestUserPermsTranslation(unittest.TestCase):
         
         cmd_gmember = translate_win_net_to_unix(["localgroup", "mygroup", "john", "/add"])
         self.assertTrue("usermod" in cmd_gmember or "dseditgroup" in cmd_gmember)
+
+    def test_self_explanatory_commands(self):
+        # user subcommands
+        self.assertEqual(user_cmd("add john"), ["useradd", "john"])
+        self.assertEqual(user_cmd("remove john"), ["userdel", "john"])
+        self.assertEqual(user_cmd("delete john"), ["userdel", "john"])
+        self.assertEqual(user_cmd("passwd john"), ["passwd", "john"])
+        self.assertEqual(user_cmd("join admin john"), ["usermod", "-aG", "admin", "john"])
+        self.assertEqual(user_cmd("list"), ["cut", "-d:", "-f1", "/etc/passwd"])
+        
+        # group subcommands
+        self.assertEqual(group_cmd("add mygroup"), ["groupadd", "mygroup"])
+        self.assertEqual(group_cmd("remove mygroup"), ["groupdel", "mygroup"])
+        self.assertEqual(group_cmd("delete mygroup"), ["groupdel", "mygroup"])
+        self.assertEqual(group_cmd("list"), ["cut", "-d:", "-f1", "/etc/group"])
+        
+        # permission subcommands
+        self.assertEqual(permission_cmd("set 755 /path"), ["chmod", "755", "/path"])
+        self.assertEqual(permission_cmd("owner admin /path"), ["chown", "admin", "/path"])
+        self.assertEqual(permission_cmd("group admins /path"), ["chgrp", "admins", "/path"])
 
 
 if __name__ == "__main__":

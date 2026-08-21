@@ -210,6 +210,12 @@ def show_command_help(cmd_name: str, commands: dict):
             usage = f"{cmd_name} <groupname>"
         elif cmd_name in ("groupdel", "delgroup"):
             usage = f"{cmd_name} <groupname>"
+        elif cmd_name == "user":
+            usage = "user [add|remove|passwd|join|list] [args...]"
+        elif cmd_name == "group":
+            usage = "group [add|remove|list] [args...]"
+        elif cmd_name in ("permission", "permissions"):
+            usage = f"{cmd_name} [set|owner|group] [args...]"
         else:
             if cmd.needs_arg:
                 kind = cmd.arg_completion_kind or "arg"
@@ -229,6 +235,312 @@ def show_command_help(cmd_name: str, commands: dict):
         expand=False
     )
     console.print(panel)
+
+
+def show_context_help(words: list[str], commands: dict):
+    from rich.panel import Panel
+    from rich.table import Table
+    
+    first_word = words[0].lower()
+    resolved, _ = resolve_command(list(commands.keys()) + list(BUILTIN_DESCRIPTIONS.keys()), first_word)
+    if not resolved:
+        console.print(f"[red]Unknown command: {first_word}[/red]")
+        return
+        
+    subcmd = words[1].lower() if len(words) > 1 else ""
+    rest = words[2:]
+    
+    title = f"[bold green]Help: {' '.join(words)} ?[/bold green]"
+    
+    # --- USER command context help ---
+    if resolved == "user":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]add[/green]", "Add a new system user account")
+            table.add_row("[green]remove[/green]", "Delete an existing system user account")
+            table.add_row("[green]delete[/green]", "Delete an existing system user account")
+            table.add_row("[green]passwd[/green]", "Change a user's password")
+            table.add_row("[green]password[/green]", "Change a user's password")
+            table.add_row("[green]join[/green]", "Add a user to a group")
+            table.add_row("[green]list[/green]", "List all local users")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "add":
+            if not rest:
+                console.print(Panel("[yellow]<username>[/yellow]  Specify the name of the new user", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow][password][/yellow]  Specify the password for the new user (optional)", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd in ("remove", "delete"):
+            if not rest:
+                console.print(Panel("[yellow]<username>[/yellow]  Specify the user account to delete", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd in ("passwd", "password"):
+            if not rest:
+                console.print(Panel("[yellow]<username>[/yellow]  Specify the user account to change password", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow][password][/yellow]  Specify the new password (optional)", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "join":
+            if not rest:
+                console.print(Panel("[yellow]<group>[/yellow]     Specify the group name", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow]<username>[/yellow]  Specify the user to add to the group", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "list":
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+
+    # --- GROUP command context help ---
+    if resolved == "group":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]add[/green]", "Add a new system group")
+            table.add_row("[green]remove[/green]", "Delete an existing system group")
+            table.add_row("[green]delete[/green]", "Delete an existing system group")
+            table.add_row("[green]list[/green]", "List all local groups")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "add":
+            if not rest:
+                console.print(Panel("[yellow]<groupname>[/yellow]  Specify the name of the new group", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd in ("remove", "delete"):
+            if not rest:
+                console.print(Panel("[yellow]<groupname>[/yellow]  Specify the group to delete", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "list":
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+
+    # --- PERMISSION / PERMISSIONS command context help ---
+    if resolved in ("permission", "permissions"):
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]set[/green]", "Set read/write/execute permissions (chmod)")
+            table.add_row("[green]owner[/green]", "Change owner of file or folder (chown)")
+            table.add_row("[green]group[/green]", "Change group of file or folder (chgrp)")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "set":
+            if not rest:
+                console.print(Panel("[yellow]<permissions>[/yellow]  Specify octal (e.g. 755, 644) or symbolic (e.g. +x, g+w) permissions", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow]<path>[/yellow]         Specify the file or folder path", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "owner":
+            if not rest:
+                console.print(Panel("[yellow]<owner>[/yellow]  Specify the username to assign as owner", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow]<path>[/yellow]   Specify the file or folder path", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+            
+        if subcmd == "group":
+            if not rest:
+                console.print(Panel("[yellow]<group>[/yellow]  Specify the group to assign", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the file or folder path", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            return
+
+    # --- Fallback / traditional command context help ---
+    if resolved == "chmod":
+        if not subcmd:
+            console.print(Panel("[yellow]<permissions>[/yellow]  Specify octal (e.g. 755, 644) or symbolic (e.g. +x) permissions", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow]<path>[/yellow]         Specify the file or folder path", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    if resolved == "chown":
+        if not subcmd:
+            console.print(Panel("[yellow]<owner>[/yellow]  Specify the owner username", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow]<path>[/yellow]   Specify the file or folder path", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    if resolved == "chgrp":
+        if not subcmd:
+            console.print(Panel("[yellow]<group>[/yellow]  Specify the group name", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow]<path>[/yellow]  Specify the file or folder path", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    if resolved in ("useradd", "adduser"):
+        if not subcmd:
+            console.print(Panel("[yellow]<username>[/yellow]  Specify the name of the new user", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow][password][/yellow]  Specify the password (optional)", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    if resolved in ("userdel", "deluser"):
+        if not subcmd:
+            console.print(Panel("[yellow]<username>[/yellow]  Specify the user account to delete", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    if resolved == "passwd":
+        if not subcmd:
+            console.print(Panel("[yellow][username][/yellow]  Specify the user account (defaults to current user)", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    if resolved in ("groupadd", "addgroup"):
+        if not subcmd:
+            console.print(Panel("[yellow]<groupname>[/yellow]  Specify the name of the new group", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    if resolved in ("groupdel", "delgroup"):
+        if not subcmd:
+            console.print(Panel("[yellow]<groupname>[/yellow]  Specify the group to delete", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Service control commands ---
+    if resolved in ("status", "start", "stop", "restart", "logs", "live"):
+        if not subcmd:
+            console.print(Panel(f"[yellow]<service>[/yellow]  Specify the name of the service to {resolved}", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Power commands ---
+    if resolved in ("reboot", "shutdown"):
+        if not subcmd:
+            console.print(Panel("[yellow][time][/yellow]  Specify time delay/target (e.g. '10' for 10 minutes, '23:30', or 'now') (optional)", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Simple zero-arg commands ---
+    if resolved in ("cancel", "sysinfo", "processes", "containers", "back", "alias", "ip", "update"):
+        console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Path/directory commands ---
+    if resolved in ("list", "cd", "open"):
+        if not subcmd:
+            console.print(Panel(f"[yellow][path][/yellow]  Specify the target path to {resolved if resolved != 'list' else 'list directory contents'} (optional)", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- File operations ---
+    if resolved in ("copy", "move"):
+        if not subcmd:
+            console.print(Panel("[yellow]<source>[/yellow]       Specify the file or folder to copy/move", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow]<destination>[/yellow]  Specify the target destination path", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved in ("remove", "mkdir"):
+        if not subcmd:
+            console.print(Panel(f"[yellow]<path>[/yellow]  Specify the file or folder to {resolved if resolved == 'remove' else 'create'}", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- SQL / databases ---
+    if resolved == "sqlite":
+        if not subcmd:
+            console.print(Panel("[yellow]<database_path>[/yellow]  Specify the path to the SQLite database file", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow][SQL query][/yellow]      Specify the SQL query to run against the database (optional)", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Configuration ---
+    if resolved == "config":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]set <setting> <value>[/green]", "Change a configuration setting")
+            table.add_row("[green]reset[/green]", "Reset all configurations to defaults")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Git commands ---
+    if resolved == "git":
+        if not subcmd:
+            console.print(Panel("[yellow]<subcommand>[/yellow]  Specify the Git action (e.g. status, log, diff, branch, add, commit, push, pull)", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("Specify optional sub-arguments or options for the Git subcommand.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "gitsave":
+        if not subcmd:
+            console.print(Panel("[yellow]<message>[/yellow]  Specify the commit message for the changes", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Package management ---
+    if resolved in ("install", "uninstall"):
+        if not subcmd:
+            console.print(Panel(f"[yellow]<package>[/yellow]  Specify the package name to {resolved}", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- Port and Network ---
+    if resolved == "port":
+        if not subcmd:
+            console.print(Panel("[yellow]<port_number | program_name>[/yellow]  Specify a port number or program name to lookup", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "netconfig":
+        if not subcmd:
+            console.print(Panel("[yellow]<adapter>[/yellow]  Specify the network interface/adapter to configure", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    show_command_help(resolved, commands)
 
 
 def execute_line(
@@ -272,12 +584,7 @@ def execute_line(
                 console.print(f"[red]No commands match the prefix '{candidate}'.[/red]")
             return True
         else:
-            first_word = words[0].lower()
-            resolved, _ = resolve_command(all_names, first_word)
-            if resolved:
-                show_command_help(resolved, commands)
-            else:
-                console.print(f"[red]Unknown command: {first_word}[/red]")
+            show_context_help(words, commands)
             return True
 
     show_cmd = False
