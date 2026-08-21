@@ -572,16 +572,16 @@ def interactive_firewall_setup():
                     print(f"✗ Failed to delete Rule #{target_id}. Ensure root/sudo privileges.")
         return
 
-    port = prompt_ask("Enter port number or range (e.g. 80, 443, 8080)")
-    if not port:
-        print("Port number is required.")
-        return
-        
     proto = select_dropdown("Select Protocol", ["tcp", "udp", "both"], default_idx=0)
     
     ifaces = get_network_interfaces()
     iface = select_dropdown("Select Adapter / Interface", ["all"] + ifaces, default_idx=0)
     
+    port = prompt_ask("Enter port number or range (e.g. 80, 443, 8080)")
+    if not port:
+        print("Port number is required.")
+        return
+
     rule_name = prompt_ask("Enter custom Rule Name (optional, e.g. Web-Server)", default="")
     
     name_desc = f" (Name: '{rule_name}')" if rule_name else ""
@@ -623,7 +623,6 @@ def handle_firewall_cli(args: list[str]):
         
         if sub in ("delete", "remove"):
             if target.isdigit():
-                # Delete by ID or port
                 target_num = int(target)
                 success = delete_rule_by_id(target_num)
                 if not success:
@@ -639,7 +638,14 @@ def handle_firewall_cli(args: list[str]):
             return
 
         port = target
-        proto = args[2].lower() if len(args) > 2 and args[2].lower() in ("tcp", "udp", "both") else "tcp"
+        
+        # If protocol was passed in CLI (e.g. firewall allow 22 udp), use it;
+        # otherwise prompt with interactive Protocol Dropdown!
+        if len(args) > 2 and args[2].lower() in ("tcp", "udp", "both"):
+            proto = args[2].lower()
+        else:
+            proto = select_dropdown(f"Select Protocol for Port {port}", ["tcp", "udp", "both"], default_idx=0)
+
         iface = args[3] if len(args) > 3 else "all"
         rule_name = args[4] if len(args) > 4 else ""
         
