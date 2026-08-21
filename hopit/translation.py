@@ -1,6 +1,6 @@
 import os
 import shlex
-from lazyctl.config import IS_WINDOWS, IS_MACOS
+from hopit.config import IS_WINDOWS, IS_MACOS
 
 # --- helpers used inside lambdas --------------------------------------------
 def _q(s: str) -> str:

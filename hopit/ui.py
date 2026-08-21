@@ -9,9 +9,9 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
-from lazyctl.config import IS_WINDOWS, IS_MACOS, console, with_privilege
-from lazyctl.loaders import load_adapters
-from lazyctl.commands import BUILTIN_DESCRIPTIONS
+from hopit.config import IS_WINDOWS, IS_MACOS, console, with_privilege
+from hopit.loaders import load_adapters
+from hopit.commands import BUILTIN_DESCRIPTIONS
 
 MAX_ARG_COMPLETIONS = 80
 MIN_ARG_PREFIX_CHARS = {
@@ -133,7 +133,7 @@ def render_result(proc: subprocess.CompletedProcess, label: str):
 
 
 def print_help(commands: dict, manager: str | None):
-    table = Table(title="lazyctl — available commands", show_lines=False)
+    table = Table(title="hopit-cli — available commands", show_lines=False)
     table.add_column("Command", style="bold cyan")
     table.add_column("Description")
     for name, cmd in commands.items():
@@ -150,11 +150,11 @@ def print_help(commands: dict, manager: str | None):
         "[dim]Nothing needs to be typed in full — 'hel' -> help, 'cl' -> clear, "
         "'sta nginx' -> status nginx, all work as long as the prefix is unambiguous. "
         "If two names share a prefix (e.g. 'status'/'start' both start with 'st', "
-        "or 'reboot'/'remove' both start with 're'), lazyctl lists the candidates "
+        "or 'reboot'/'remove' both start with 're'), hopit-cli lists the candidates "
         "instead of guessing.[/dim]"
     )
     if not manager:
-        console.print("[yellow]No supported package manager detected — install/remove/update unavailable.[/yellow]")
+        console.print("[yellow]No supported package manager detected — install/uninstall/update unavailable.[/yellow]")
 
 
 def configure_macos_network(adapter: str, style):
@@ -228,7 +228,7 @@ def configure_windows_network(adapter: str, style):
                 console.print("[bold green]Success![/bold green]")
             else:
                 console.print("[yellow]netsh returned a non-zero exit code -- verify with 'ip' command. "
-                              "You may need to run lazyctl as Administrator.[/yellow]")
+                              "You may need to run hopit-cli as Administrator.[/yellow]")
         else:
             empty = DummyCompleter()
             ip_addr = prompt([("class:prompt", "IP Address (e.g. 192.168.1.50): ")], completer=empty, style=style).strip()
@@ -252,6 +252,6 @@ def configure_windows_network(adapter: str, style):
                 console.print("[bold green]Success![/bold green]")
             else:
                 console.print("[yellow]netsh returned a non-zero exit code -- verify with 'ip' command. "
-                              "You may need to run lazyctl as Administrator.[/yellow]")
+                              "You may need to run hopit-cli as Administrator.[/yellow]")
     except KeyboardInterrupt:
         console.print("\n[dim]Cancelled.[/dim]")

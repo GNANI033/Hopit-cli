@@ -32,7 +32,7 @@ function Get-WingetId { param($id)
 
 Write-Host ""
 Write-Host "  ============================================" -ForegroundColor Magenta
-Write-Host "   lazyctl  -  Windows Automated Setup"        -ForegroundColor Magenta
+Write-Host "   hopit-cli  -  Windows Automated Setup"        -ForegroundColor Magenta
 Write-Host "  ============================================" -ForegroundColor Magenta
 Write-Host ""
 
@@ -235,18 +235,18 @@ if ($LASTEXITCODE -eq 0) {
 
 # -- 6. Create launcher + add to user PATH ------------------------------------
 Write-Host ""
-Write-Step 6 "Creating lazyctl launcher"
+Write-Step 6 "Creating hopit-cli launcher"
 
-$lazyctlDir = "$env:LOCALAPPDATA\lazyctl"
-New-Item -ItemType Directory -Force -Path $lazyctlDir | Out-Null
+$hopitDir = "$env:LOCALAPPDATA\hopit-cli"
+New-Item -ItemType Directory -Force -Path $hopitDir | Out-Null
 
-$launcher = "$lazyctlDir\lazyctl.bat"
-"@echo off`r`npython `"$ScriptDir\lazyctl.py`" %*" | Set-Content $launcher -Encoding ASCII
+$launcher = "$hopitDir\hopit-cli.bat"
+"@echo off`r`npython `"$ScriptDir\hopit-cli.py`" %*" | Set-Content $launcher -Encoding ASCII
 
 $userPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
-if ($userPath -notlike "*$lazyctlDir*") {
-    [System.Environment]::SetEnvironmentVariable("PATH", "$userPath;$lazyctlDir", "User")
-    Write-Ok "lazyctl added to your user PATH"
+if ($userPath -notlike "*$hopitDir*") {
+    [System.Environment]::SetEnvironmentVariable("PATH", "$userPath;$hopitDir", "User")
+    Write-Ok "hopit-cli added to your user PATH"
 } else {
     Write-Ok "Already in PATH"
 }
@@ -256,7 +256,7 @@ Write-Host ""
 Write-Host "  ============================================" -ForegroundColor Green
 Write-Host "   All done!  Open Windows Terminal and run:" -ForegroundColor Green
 Write-Host ""
-Write-Host "       lazyctl" -ForegroundColor White
+Write-Host "       hopit-cli" -ForegroundColor White
 Write-Host ""
 Write-Host "   (Open a NEW terminal window for PATH to apply)" -ForegroundColor DarkGray
 Write-Host "  ============================================" -ForegroundColor Green

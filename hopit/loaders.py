@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import threading
 from typing import Callable
-from lazyctl.config import IS_WINDOWS, IS_MACOS
+from hopit.config import IS_WINDOWS, IS_MACOS
 
 # Distro / package-manager detection & mapping constants
 MANAGER_DISPLAY_NAME = {

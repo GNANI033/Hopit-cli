@@ -4,8 +4,8 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
-from lazyctl.config import IS_WINDOWS, IS_MACOS
-from lazyctl.loaders import MANAGER_PKG, MANAGER_DISPLAY_NAME, MANAGER_UPDATE_CMDS
+from hopit.config import IS_WINDOWS, IS_MACOS
+from hopit.loaders import MANAGER_PKG, MANAGER_DISPLAY_NAME, MANAGER_UPDATE_CMDS
 
 @dataclass
 class Command:
@@ -21,8 +21,8 @@ class Command:
 BUILTIN_DESCRIPTIONS = {
     "help": "Show this help",
     "clear": "Clear the screen",
-    "exit": "Leave lazyctl",
-    "quit": "Leave lazyctl",
+    "exit": "Leave hopit-cli",
+    "quit": "Leave hopit-cli",
 }
 
 _CLOCK_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
@@ -433,9 +433,9 @@ def build_commands(manager: str | None, names: dict) -> dict:
             arg_completions=names["available_pkg"],
             arg_completion_kind="available_pkg",
         )
-        commands["remove"] = Command(
+        commands["uninstall"] = Command(
             run=lambda pkg: MANAGER_PKG[manager]["remove"](pkg),
-            desc=f"Remove a package (via {MANAGER_DISPLAY_NAME[manager]})",
+            desc=f"Uninstall a package (via {MANAGER_DISPLAY_NAME[manager]})",
             needs_sudo=True,
             mode="stream",
             arg_completions=names["installed_pkg"],
