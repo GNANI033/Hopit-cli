@@ -22,6 +22,8 @@ from hopit.config import (
     detect_editor,
     get_git_branch,
     with_privilege,
+    get_active_theme,
+    THEMES,
 )
 from hopit.loaders import (
     load_service_names,
@@ -46,20 +48,23 @@ from hopit.ui import (
 )
 from hopit.translation import translate_cross_platform
 
-PROMPT_STYLE = Style.from_dict({
-    "hopit": "bg:#f38ba8 fg:#1e1e2e bold",
-    "hopit_sep": "fg:#f38ba8 bg:#fab387",
-    "user": "bg:#fab387 fg:#1e1e2e bold",
-    "user_sep": "fg:#fab387 bg:#a6e3a1",
-    "cwd": "bg:#a6e3a1 fg:#1e1e2e bold",
-    "cwd_sep": "fg:#a6e3a1 bg:#89b4fa",
-    "cwd_sep_git": "fg:#a6e3a1 bg:#cba6f7",
-    "git": "bg:#cba6f7 fg:#1e1e2e bold",
-    "git_sep": "fg:#cba6f7 bg:#89b4fa",
-    "time": "bg:#89b4fa fg:#1e1e2e bold",
-    "time_sep": "fg:#89b4fa",
-    "bottom-toolbar": "bg:#222222 #aaaaaa",
-})
+
+def create_prompt_style(theme: dict) -> Style:
+    return Style.from_dict({
+        "hopit": f"bg:{theme['hopit']} fg:{theme['text']} bold",
+        "hopit_sep": f"fg:{theme['hopit']} bg:{theme['user']}",
+        "user": f"bg:{theme['user']} fg:{theme['text']} bold",
+        "user_sep": f"fg:{theme['user']} bg:{theme['cwd']}",
+        "cwd": f"bg:{theme['cwd']} fg:{theme['text']} bold",
+        "cwd_sep": f"fg:{theme['cwd']} bg:{theme['time']}",
+        "cwd_sep_git": f"fg:{theme['cwd']} bg:{theme['git']}",
+        "git": f"bg:{theme['git']} fg:{theme['text']} bold",
+        "git_sep": f"fg:{theme['git']} bg:{theme['time']}",
+        "time": f"bg:{theme['time']} fg:{theme['text']} bold",
+        "time_sep": f"fg:{theme['time']}",
+        "bottom-toolbar": "bg:#222222 #aaaaaa",
+    })
+
 
 
 def detect_user_shell() -> str:
@@ -784,7 +789,7 @@ def execute_line(
             console.print(f"\n[bold cyan]Alias Wizard[/bold cyan]  (shell: [green]{shell_name}[/green]  •  rc: [dim]{rc}[/dim])")
             alias_name = prompt(
                 [("class:prompt", "Alias name (shortcut): ")],
-                completer=DummyCompleter(), style=PROMPT_STYLE
+                completer=DummyCompleter(), style=create_prompt_style(get_active_theme())
             ).strip()
             if not alias_name:
                 console.print("[red]Alias name cannot be empty. Aborting.[/red]")
@@ -794,7 +799,7 @@ def execute_line(
                 return True
             alias_val = prompt(
                 [("class:prompt", f"Command for '{alias_name}': ")],
-                completer=DummyCompleter(), style=PROMPT_STYLE
+                completer=DummyCompleter(), style=create_prompt_style(get_active_theme())
             ).strip()
             if not alias_val:
                 console.print("[red]Command cannot be empty. Aborting.[/red]")
@@ -853,7 +858,7 @@ def execute_line(
                 if os.listdir(target):  # non-empty dir — ask first
                     ans = prompt(
                         [("class:prompt", f"Remove '{target}' and all its contents? [y/N]: ")],
-                        style=PROMPT_STYLE,
+                        style=create_prompt_style(get_active_theme()),
                     ).strip().lower()
                     if ans != "y":
                         console.print("[dim]Cancelled.[/dim]")
@@ -882,10 +887,10 @@ def execute_line(
             console.print("[yellow]Please specify an adapter, e.g., 'netconfig eth0'[/yellow]")
             return True
         if IS_WINDOWS:
-            configure_windows_network(rest[0], PROMPT_STYLE)
+            configure_windows_network(rest[0], create_prompt_style(get_active_theme()))
             return True
         if IS_MACOS:
-            configure_macos_network(rest[0], PROMPT_STYLE)
+            configure_macos_network(rest[0], create_prompt_style(get_active_theme()))
             return True
         adapter = rest[0]
         if not os.path.exists(f"/sys/class/net/{adapter}"):
@@ -912,7 +917,7 @@ def execute_line(
             console.print(f"\n[bold cyan]Configuring {adapter}[/bold cyan] (Current connection profile: {conn_name or 'none'})")
             
             mode_completer = WordCompleter(["dhcp", "static", "up", "down"], ignore_case=True)
-            mode = prompt([("class:prompt", "Action [dhcp/static/up/down]: ")], completer=mode_completer, style=PROMPT_STYLE).strip().lower()
+            mode = prompt([("class:prompt", "Action [dhcp/static/up/down]: ")], completer=mode_completer, style=create_prompt_style(get_active_theme())).strip().lower()
             
             if mode not in ("dhcp", "static", "up", "down"):
                 console.print("[red]Invalid action. Aborting.[/red]")
@@ -941,9 +946,9 @@ def execute_line(
                 console.print("[bold green]Success![/bold green]")
             else:
                 empty = DummyCompleter()
-                ip_addr = prompt([("class:prompt", "IP Address with subnet (e.g. 192.168.1.50/24): ")], completer=empty, style=PROMPT_STYLE).strip()
-                gw = prompt([("class:prompt", "Gateway (e.g. 192.168.1.1): ")], completer=empty, style=PROMPT_STYLE).strip()
-                dns = prompt([("class:prompt", "DNS (e.g. 8.8.8.8): ")], completer=empty, style=PROMPT_STYLE).strip()
+                ip_addr = prompt([("class:prompt", "IP Address with subnet (e.g. 192.168.1.50/24): ")], completer=empty, style=create_prompt_style(get_active_theme())).strip()
+                gw = prompt([("class:prompt", "Gateway (e.g. 192.168.1.1): ")], completer=empty, style=create_prompt_style(get_active_theme())).strip()
+                dns = prompt([("class:prompt", "DNS (e.g. 8.8.8.8): ")], completer=empty, style=create_prompt_style(get_active_theme())).strip()
                 
                 if not ip_addr:
                     console.print("[red]IP address is required. Aborting.[/red]")
@@ -1046,20 +1051,23 @@ def main():
         history=InMemoryHistory(),
         completer=completer,
         complete_while_typing=True,
-        style=PROMPT_STYLE,
         bottom_toolbar=bottom_toolbar,
     )
 
+    theme = get_active_theme()
     distro = read_os_pretty_name()
     mgr_label = MANAGER_DISPLAY_NAME.get(manager, "none detected")
     console.print(Panel.fit(
-        Text("hopit-cli", style="bold green") + Text(f"  —  {distro}  •  package manager: {mgr_label}"),
-        border_style="green",
+        Text("Hopit-CLI Shell", style="bold cyan") + Text(f"  •  {distro}  •  Pkg Manager: {mgr_label}"),
+        border_style=theme.get("border", "cyan"),
     ))
-    console.print("[dim]Type 'help' to see commands, or just start typing (e.g. 'sta nginx').[/dim]\n")
+    console.print("[dim]Type 'help' or append '?' to any command for interactive assistance.[/dim]\n")
 
     while True:
         try:
+            current_theme = get_active_theme()
+            current_style = create_prompt_style(current_theme)
+
             cwd = os.getcwd()
             home = os.path.expanduser("~")
             display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
@@ -1100,7 +1108,7 @@ def main():
             ])
             
             try:
-                line = session.prompt(prompt_fragments).strip()
+                line = session.prompt(prompt_fragments, style=current_style).strip()
             except EOFError:
                 break
             except KeyboardInterrupt:

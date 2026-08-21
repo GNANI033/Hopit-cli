@@ -30,6 +30,126 @@ if IS_WINDOWS:
         # Tell prompt_toolkit to emit 24-bit color sequences.
         os.environ.setdefault("PROMPT_TOOLKIT_COLOR_DEPTH", "DEPTH_24_BIT")
 
+THEMES = {
+    "catppuccin": {
+        "name": "Catppuccin Mocha (Default)",
+        "hopit": "#f38ba8", # Red / Pink
+        "user": "#fab387",  # Peach
+        "cwd": "#a6e3a1",   # Green
+        "git": "#cba6f7",   # Mauve / Purple
+        "time": "#89b4fa",  # Blue
+        "text": "#11111b",  # Crust / Dark Charcoal
+        "border": "#89b4fa",
+    },
+    "dracula": {
+        "name": "Dracula",
+        "hopit": "#ff5555", # Red
+        "user": "#ffb86c",  # Orange
+        "cwd": "#50fa7b",   # Green
+        "git": "#bd93f9",   # Purple
+        "time": "#8be9fd",  # Cyan
+        "text": "#282a36",  # Dark Background contrast text
+        "border": "#bd93f9",
+    },
+    "nord": {
+        "name": "Nord",
+        "hopit": "#bf616a", # Frost Red
+        "user": "#d08770",  # Frost Orange
+        "cwd": "#a3be8c",   # Frost Green
+        "git": "#b48ead",   # Frost Purple
+        "time": "#88c0d0",  # Frost Ice Blue
+        "text": "#2e3440",  # Nord Polar Night Dark
+        "border": "#88c0d0",
+    },
+    "tokyo-night": {
+        "name": "Tokyo Night",
+        "hopit": "#f7768e", # Red Pink
+        "user": "#ff9e64",  # Orange
+        "cwd": "#9ece6a",   # Green
+        "git": "#bb9af7",   # Purple
+        "time": "#7dcfff",  # Cyan Blue
+        "text": "#16161e",  # Night Dark
+        "border": "#bb9af7",
+    },
+    "one-dark": {
+        "name": "One Dark Pro",
+        "hopit": "#e06c75", # Red
+        "user": "#d19a66",  # Orange
+        "cwd": "#98c379",   # Green
+        "git": "#c678dd",   # Purple
+        "time": "#61afef",  # Blue
+        "text": "#21252b",  # Dark Slate
+        "border": "#61afef",
+    },
+    "cyberpunk": {
+        "name": "Cyberpunk Neon",
+        "hopit": "#ff0055", # Hot Red/Pink
+        "user": "#ff8c00",  # Neon Amber
+        "cwd": "#00ff66",   # Neon Green
+        "git": "#9d00ff",   # Neon Violet
+        "time": "#00e5ff",  # Neon Cyan
+        "text": "#0a0a12",  # Deep Midnight
+        "border": "#00e5ff",
+    },
+    "monokai": {
+        "name": "Monokai Pro",
+        "hopit": "#ff6188", # Pink Red
+        "user": "#fc9867",  # Orange
+        "cwd": "#a9dc76",   # Green
+        "git": "#ab9df2",   # Purple
+        "time": "#78dce8",  # Cyan Blue
+        "text": "#19181a",  # Monokai Dark
+        "border": "#ff6188",
+    },
+    "gruvbox": {
+        "name": "Gruvbox Dark",
+        "hopit": "#fb4934", # Bright Red
+        "user": "#fe8019",  # Bright Orange
+        "cwd": "#b8bb26",   # Bright Green
+        "git": "#d3869b",   # Bright Purple
+        "time": "#83a598",  # Bright Aqua
+        "text": "#1d2021",  # Dark Hard
+        "border": "#fe8019",
+    },
+    "solarized": {
+        "name": "Solarized Dark",
+        "hopit": "#dc322f", # Red
+        "user": "#cb4b16",  # Orange
+        "cwd": "#859900",   # Green
+        "git": "#d33682",   # Magenta
+        "time": "#268bd2",  # Blue
+        "text": "#002b36",  # Solarized Base03
+        "border": "#268bd2",
+    },
+    "synthwave": {
+        "name": "Synthwave '84",
+        "hopit": "#fe4450", # Neon Coral
+        "user": "#ff7edb",  # Neon Pink
+        "cwd": "#72f1b8",   # Neon Mint
+        "git": "#b967ff",   # Electric Violet
+        "time": "#36f9f6",  # Electric Cyan
+        "text": "#241b2f",  # Deep Purple Night
+        "border": "#f92aad",
+    },
+}
+
+def get_active_theme_name() -> str:
+    try:
+        config_path = os.path.expanduser("~/.hopit-config.json")
+        if os.path.exists(config_path):
+            import json
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+                theme = cfg.get("theme")
+                if theme and theme in THEMES:
+                    return theme
+    except Exception:
+        pass
+    return "catppuccin"
+
+def get_active_theme() -> dict:
+    return THEMES[get_active_theme_name()]
+
 # Build the Rich Console with the right color profile.
 if IS_WINDOWS_TERMINAL:
     # Force truecolor Rich output inside Windows Terminal.
@@ -37,6 +157,7 @@ if IS_WINDOWS_TERMINAL:
 else:
     # Let Rich auto-detect (works on Linux; degrades gracefully on plain cmd).
     console = Console()
+
 
 
 def detect_package_manager() -> str | None:

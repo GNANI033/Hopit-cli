@@ -24,6 +24,8 @@ def save_config(config):
 
 def main():
     from rich.console import Console
+    from hopit.config import detect_editor, detect_package_manager, get_active_theme_name, THEMES
+
     console = Console()
     config = load_config()
 
@@ -33,11 +35,15 @@ def main():
         table.add_column("Value", style="green")
         table.add_column("Status", style="yellow")
 
-        from hopit.config import detect_editor, detect_package_manager
-        
         custom_editor = config.get("editor")
         custom_pkg = config.get("package_manager")
+        custom_theme = config.get("theme")
 
+        table.add_row(
+            "theme",
+            custom_theme or "Not set",
+            f"Active: {get_active_theme_name()} ({THEMES[get_active_theme_name()]['name']})"
+        )
         table.add_row(
             "editor",
             custom_editor or "Not set",
@@ -50,8 +56,12 @@ def main():
         )
 
         console.print(table)
-        console.print(f"[dim]Config file: {CONFIG_PATH}[/dim]")
-        console.print("[dim]Use 'config set <setting> <value>' to modify, or 'config reset' to clear custom settings.[/dim]")
+        console.print("\n[bold cyan]Available Color Themes:[/bold cyan]")
+        for k, t in THEMES.items():
+            active_marker = " [bold green](active)[/bold green]" if k == get_active_theme_name() else ""
+            console.print(f"  • [bold yellow]{k:12}[/bold yellow] : {t['name']}{active_marker}")
+        console.print(f"\n[dim]Config file: {CONFIG_PATH}[/dim]")
+        console.print("[dim]Use 'config set <setting> <value>' to modify (e.g. 'config set theme dracula'), or 'config reset' to clear custom settings.[/dim]")
         return
 
     action = sys.argv[1].lower()
@@ -61,10 +71,14 @@ def main():
             console.print("[red]Usage: config set <setting> <value>[/red]")
             sys.exit(1)
         setting = sys.argv[2].lower()
-        value = sys.argv[3]
+        value = sys.argv[3].lower()
 
-        if setting not in ("editor", "package_manager"):
-            console.print(f"[red]Unknown setting: {setting}. Valid settings: editor, package_manager[/red]")
+        if setting not in ("editor", "package_manager", "theme"):
+            console.print(f"[red]Unknown setting: {setting}. Valid settings: theme, editor, package_manager[/red]")
+            sys.exit(1)
+
+        if setting == "theme" and value not in THEMES:
+            console.print(f"[red]Invalid theme '{value}'. Available themes: {', '.join(THEMES.keys())}[/red]")
             sys.exit(1)
 
         config[setting] = value

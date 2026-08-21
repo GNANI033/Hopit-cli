@@ -9,7 +9,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
-from hopit.config import IS_WINDOWS, IS_MACOS, console, with_privilege
+from hopit.config import IS_WINDOWS, IS_MACOS, console, with_privilege, get_active_theme
 from hopit.loaders import load_adapters
 from hopit.commands import BUILTIN_DESCRIPTIONS
 
@@ -20,6 +20,7 @@ MIN_ARG_PREFIX_CHARS = {
     "service": 0,
     "path": 0,
 }
+
 
 
 def resolve_command(all_names, token: str):
@@ -380,6 +381,35 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
+            elif resolved == "config":
+                from hopit.config import THEMES
+                if len(words) == 2:
+                    candidates = [("set", "Change a configuration setting"), ("reset", "Reset configuration to defaults")]
+                elif len(words) == 3 and words[1].lower() == "set":
+                    candidates = [
+                        ("theme", "Color scheme appearance"),
+                        ("editor", "Default text editor"),
+                        ("package_manager", "Default package manager override"),
+                    ]
+                elif len(words) == 4 and words[1].lower() == "set" and words[2].lower() == "theme":
+                    candidates = [(k, t["name"]) for k, t in THEMES.items()]
+                elif len(words) == 4 and words[1].lower() == "set" and words[2].lower() == "editor":
+                    candidates = [("nano", "Nano text editor"), ("vim", "Vim text editor"), ("code", "VS Code editor"), ("micro", "Micro text editor")]
+                elif len(words) == 4 and words[1].lower() == "set" and words[2].lower() == "package_manager":
+                    candidates = [("apt-get", "APT package manager"), ("dnf", "DNF package manager"), ("pacman", "Pacman package manager"), ("brew", "Homebrew"), ("winget", "Windows Package Manager")]
+                else:
+                    candidates = []
+
+                word_lower = word.lower()
+                matches = []
+                for cand, meta in candidates:
+                    if cand.lower().startswith(word_lower):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
+                return
             elif resolved in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
@@ -445,6 +475,7 @@ def render_result(
     output = (proc.stdout or "") + (proc.stderr or "")
     output = output.rstrip("\n")
 
+    theme = get_active_theme()
     output_lower = output.lower()
     if "active (running)" in output_lower or "running" in output_lower or "online" in output_lower:
         border = "green"
@@ -453,7 +484,7 @@ def render_result(
     elif "inactive" in output_lower or "dead" in output_lower or "stopped" in output_lower:
         border = "yellow"
     else:
-        border = "cyan"
+        border = theme.get("border", "cyan")
 
     if output:
         lines = output.splitlines()
@@ -525,11 +556,8 @@ def print_help(commands: dict, manager: str | None):
         table.add_row(label, desc)
     console.print(table)
     console.print(
-        "[dim]Nothing needs to be typed in full — 'hel' -> help, 'cl' -> clear, "
-        "'sta nginx' -> status nginx, all work as long as the prefix is unambiguous. "
-        "If two names share a prefix (e.g. 'status'/'start' both start with 'st', "
-        "or 'reboot'/'remove' both start with 're'), hopit-cli lists the candidates "
-        "instead of guessing.[/dim]"
+        "[dim]Note: Commands support prefix auto-resolution and interactive discovery. "
+        "Type '?' after any command or sub-argument for positional context and usage syntax.[/dim]"
     )
     if not manager:
         console.print("[yellow]No supported package manager detected — install/uninstall/update unavailable.[/yellow]")
