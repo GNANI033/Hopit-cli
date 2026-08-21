@@ -294,6 +294,7 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
         elif sub in ("allow", "block", "deny"):
             if len(words) == 3:
                 return [
+                    ("<port>", "Or type any custom port number / range of your choosing"),
                     ("80", "HTTP Web Server"),
                     ("443", "HTTPS Secure Web"),
                     ("22", "SSH Remote Access"),

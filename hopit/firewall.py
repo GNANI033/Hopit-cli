@@ -587,7 +587,22 @@ def interactive_firewall_setup():
     ifaces = get_network_interfaces()
     iface = select_dropdown("Select Adapter / Interface", ["all"] + ifaces, default_idx=0)
     
-    port = prompt_ask("Enter port number or range (e.g. 80, 443, 8080)")
+    port_choices = [
+        "Custom (Or type any port number / range of your choosing)",
+        "80 (HTTP Web Server)",
+        "443 (HTTPS Secure Web)",
+        "22 (SSH Remote Access)",
+        "8080 (Web Alt / App Server)",
+        "3306 (MySQL Database)",
+        "5432 (PostgreSQL Database)",
+    ]
+    selected_port = select_dropdown("Select Target Port", port_choices, default_idx=0)
+    
+    if selected_port.startswith("Custom"):
+        port = prompt_ask("Enter custom port number or range (e.g. 80, 443, 8080)")
+    else:
+        port = selected_port.split()[0]
+        
     if not port:
         print("Port number is required.")
         return
