@@ -1,18 +1,29 @@
 import unittest
 import shlex
 import sys
-from hopit.commands import service_cmd, firewall_cmd, disk_cmd, archive_cmd, download_cmd, search_cmd, killport_cmd
+from hopit.commands import (
+    system_status_cmd,
+    system_start_cmd,
+    system_stop_cmd,
+    system_restart_cmd,
+    system_enable_cmd,
+    system_disable_cmd,
+    firewall_cmd,
+    disk_cmd,
+    archive_cmd,
+    download_cmd,
+    search_cmd,
+    killport_cmd,
+)
 
 class TestUniversalCommands(unittest.TestCase):
-    def test_service_cmd(self):
-        res = service_cmd("status nginx")
-        self.assertTrue(len(res) > 0)
-        
-        res_enable = service_cmd("enable nginx")
-        self.assertTrue(len(res_enable) > 0)
-
-        res_disable = service_cmd("disable nginx")
-        self.assertTrue(len(res_disable) > 0)
+    def test_service_direct_cmds(self):
+        self.assertTrue(len(system_status_cmd("nginx")) > 0)
+        self.assertTrue(len(system_start_cmd("nginx")) > 0)
+        self.assertTrue(len(system_stop_cmd("nginx")) > 0)
+        self.assertTrue(len(system_restart_cmd("nginx")) > 0)
+        self.assertTrue(len(system_enable_cmd("nginx")) > 0)
+        self.assertTrue(len(system_disable_cmd("nginx")) > 0)
 
     def test_firewall_cmd(self):
         res_status = firewall_cmd("status")

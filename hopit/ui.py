@@ -272,23 +272,6 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 paths = load_path_entries(word)
                 return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
 
-    elif cmd == "service":
-        if len(words) == 2:
-            svc_subs = {
-                "status": "Check service status",
-                "start": "Start a service",
-                "stop": "Stop a service",
-                "restart": "Restart a service",
-                "logs": "View recent service logs",
-                "enable": "Enable service auto-start on boot",
-                "disable": "Disable service auto-start on boot",
-            }
-            return [(k, v) for k, v in svc_subs.items()]
-        elif len(words) >= 3:
-            from hopit.loaders import load_service_names
-            svcs = load_service_names()
-            return [(s, "⚙️ service") for s in svcs]
-
     elif cmd == "firewall":
         if len(words) == 2:
             fw_subs = {
@@ -359,7 +342,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "permissions", "service", "firewall", "disk", "drive", "archive", "compress"):
+            elif resolved in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []

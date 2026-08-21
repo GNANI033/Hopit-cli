@@ -436,7 +436,7 @@ def show_context_help(words: list[str], commands: dict):
         return
 
     # --- Service control commands ---
-    if resolved in ("status", "start", "stop", "restart", "logs", "live"):
+    if resolved in ("status", "start", "stop", "restart", "logs", "live", "enable", "disable"):
         if not subcmd:
             console.print(Panel(f"[yellow]<service>[/yellow]  Specify the name of the service to {resolved}", title=title, border_style="cyan", expand=False))
         else:
@@ -541,23 +541,6 @@ def show_context_help(words: list[str], commands: dict):
         return
 
     # --- Structured universal commands ---
-    if resolved == "service":
-        if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]status[/green]", "Check service status")
-            table.add_row("[green]start[/green]", "Start a service")
-            table.add_row("[green]stop[/green]", "Stop a service")
-            table.add_row("[green]restart[/green]", "Restart a service")
-            table.add_row("[green]logs[/green]", "View recent service logs")
-            table.add_row("[green]enable[/green]", "Enable service auto-start on boot")
-            table.add_row("[green]disable[/green]", "Disable service auto-start on boot")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
-        elif len(rest) == 0:
-            console.print(Panel(f"[yellow]<service_name>[/yellow]  Specify the target service to {subcmd}", title=title, border_style="cyan", expand=False))
-        else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        return
-
     if resolved == "firewall":
         if not subcmd:
             table = Table(show_header=False, box=None, padding=(0, 2))

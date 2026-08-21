@@ -440,37 +440,20 @@ def permission_cmd(arg: str) -> list[str]:
     return []
 
 
-def service_cmd(arg: str) -> list[str]:
-    args = shlex.split(arg)
-    if not args:
-        return []
-    sub = args[0].lower()
-    rest = args[1:]
-    svc = rest[0] if rest else ""
-    
-    if sub == "status":
-        return system_status_cmd(svc)
-    elif sub == "start":
-        return system_start_cmd(svc)
-    elif sub == "stop":
-        return system_stop_cmd(svc)
-    elif sub == "restart":
-        return system_restart_cmd(svc)
-    elif sub == "logs":
-        return system_logs_cmd(svc)
-    elif sub == "enable":
-        if IS_WINDOWS:
-            return ps_command(f"Set-Service -Name {ps_quote(svc)} -StartupType Automatic")
-        if IS_MACOS:
-            return ["sudo", "launchctl", "load", "-w", f"/Library/LaunchDaemons/{svc}.plist"]
-        return ["systemctl", "enable", svc]
-    elif sub == "disable":
-        if IS_WINDOWS:
-            return ps_command(f"Set-Service -Name {ps_quote(svc)} -StartupType Disabled")
-        if IS_MACOS:
-            return ["sudo", "launchctl", "unload", "-w", f"/Library/LaunchDaemons/{svc}.plist"]
-        return ["systemctl", "disable", svc]
-    return []
+def system_enable_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        return ps_command(f"Set-Service -Name {ps_quote(svc)} -StartupType Automatic")
+    if IS_MACOS:
+        return ["sudo", "launchctl", "load", "-w", f"/Library/LaunchDaemons/{svc}.plist"]
+    return ["systemctl", "enable", svc]
+
+
+def system_disable_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        return ps_command(f"Set-Service -Name {ps_quote(svc)} -StartupType Disabled")
+    if IS_MACOS:
+        return ["sudo", "launchctl", "unload", "-w", f"/Library/LaunchDaemons/{svc}.plist"]
+    return ["systemctl", "disable", svc]
 
 
 def firewall_cmd(arg: str) -> list[str]:
@@ -610,6 +593,20 @@ def build_commands(manager: str | None, names: dict) -> dict:
             run=system_live_logs_cmd,
             desc="Follow a service's logs live (Ctrl-C to stop)",
             mode="stream",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "enable": Command(
+            run=system_enable_cmd,
+            desc="Enable a service to start automatically on boot",
+            needs_sudo=True,
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "disable": Command(
+            run=system_disable_cmd,
+            desc="Disable a service from starting automatically on boot",
+            needs_sudo=True,
             arg_completions=names["service"],
             arg_completion_kind="service",
         ),
@@ -894,15 +891,6 @@ def build_commands(manager: str | None, names: dict) -> dict:
             needs_arg=True,
             needs_sudo=True,
             mode="stream",
-        ),
-        "service": Command(
-            run=service_cmd,
-            desc="Manage system services: service [status|start|stop|restart|logs|enable|disable] <name>",
-            needs_arg=True,
-            needs_sudo=True,
-            mode="stream",
-            arg_completions=names["service"],
-            arg_completion_kind="service",
         ),
         "firewall": Command(
             run=firewall_cmd,
