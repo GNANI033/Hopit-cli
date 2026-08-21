@@ -241,7 +241,7 @@ $lazyctlDir = "$env:LOCALAPPDATA\lazyctl"
 New-Item -ItemType Directory -Force -Path $lazyctlDir | Out-Null
 
 $launcher = "$lazyctlDir\lazyctl.bat"
-"@echo off`r`npython `"$ScriptDir\lazyctl-v4.py`" %*" | Set-Content $launcher -Encoding ASCII
+"@echo off`r`npython `"$ScriptDir\lazyctl.py`" %*" | Set-Content $launcher -Encoding ASCII
 
 $userPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
 if ($userPath -notlike "*$lazyctlDir*") {

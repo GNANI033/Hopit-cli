@@ -1,0 +1,452 @@
+import re
+import shlex
+import shutil
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Callable
+from lazyctl.config import IS_WINDOWS, IS_MACOS
+from lazyctl.loaders import MANAGER_PKG, MANAGER_DISPLAY_NAME, MANAGER_UPDATE_CMDS
+
+@dataclass
+class Command:
+    run: Callable[[str], list[str]]                    # builds the real argv to execute
+    desc: str                                            # shown in help / completion menu
+    needs_arg: bool = True                               # whether an argument is required
+    needs_sudo: bool = False                             # auto-prepend sudo if not already root
+    mode: str = "capture"                                # "capture" (render nicely) or "stream" (live passthrough)
+    arg_completions: Callable[[], list[str]] | None = None  # candidates for arg tab-completion
+    arg_completion_kind: str | None = None             # service / installed_pkg / available_pkg
+
+
+BUILTIN_DESCRIPTIONS = {
+    "help": "Show this help",
+    "clear": "Clear the screen",
+    "exit": "Leave lazyctl",
+    "quit": "Leave lazyctl",
+}
+
+_CLOCK_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+
+
+def shell_command(line: str) -> list[str]:
+    if IS_WINDOWS:
+        return ["cmd", "/c", line]
+    return ["bash", "-c", line]
+
+
+def shutdown_time_arg(arg: str) -> str:
+    """Turns a user-friendly arg into what the 'shutdown' binary expects:
+    (none) / 'now'  -> 'now'
+    '10'            -> '+10'   (minutes from now)
+    '23:30'         -> '23:30' (clock time, passed through as-is)
+    anything else is passed through unchanged and 'shutdown' will report its
+    own error, which the user sees directly since these run in stream mode.
+    """
+    arg = (arg or "").strip()
+    if not arg or arg.lower() == "now":
+        return "now"
+    if arg.isdigit():
+        return f"+{arg}"
+    return arg  # covers valid HH:MM and anything invalid (shutdown will say so)
+
+
+def ps_command(script: str) -> list[str]:
+    return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]
+
+
+def ps_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def system_status_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        return ["sc", "query", svc]
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "info", svc]
+        return ["launchctl", "print", f"system/{svc}"]
+    return ["systemctl", "status", svc]
+
+
+def system_start_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        return ["sc", "start", svc]
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "start", svc]
+        return ["sudo", "launchctl", "load", f"/Library/LaunchDaemons/{svc}.plist"]
+    return ["systemctl", "start", svc]
+
+
+def system_stop_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        return ["sc", "stop", svc]
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "stop", svc]
+        return ["sudo", "launchctl", "unload", f"/Library/LaunchDaemons/{svc}.plist"]
+    return ["systemctl", "stop", svc]
+
+
+def system_restart_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        return ps_command(f"Restart-Service -Name {ps_quote(svc)}")
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "restart", svc]
+        return ["bash", "-c",
+                f"sudo launchctl unload /Library/LaunchDaemons/{svc}.plist 2>/dev/null; "
+                f"sudo launchctl load /Library/LaunchDaemons/{svc}.plist"]
+    return ["systemctl", "restart", svc]
+
+
+def system_logs_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        service = ps_quote(svc)
+        return ps_command(
+            "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
+            "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
+            "Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'} "
+            "-MaxEvents 50 | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) } "
+            "| Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap"
+        )
+    if IS_MACOS:
+        return ["log", "show", "--last", "1h",
+                "--predicate", f'process == "{svc}" OR subsystem == "{svc}"',
+                "--info"]
+    return ["journalctl", "-u", svc, "-n", "50", "--no-pager"]
+
+
+def system_live_logs_cmd(svc: str) -> list[str]:
+    if IS_WINDOWS:
+        service = ps_quote(svc)
+        return ps_command(
+            "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
+            "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
+            "$last = Get-Date; "
+            "while ($true) { "
+            "$events = Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$last; ProviderName='Service Control Manager'} "
+            "-ErrorAction SilentlyContinue | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) }; "
+            "$events | Sort-Object TimeCreated | Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap; "
+            "$last = Get-Date; Start-Sleep -Seconds 2 }"
+        )
+    if IS_MACOS:
+        return ["log", "stream",
+                "--predicate", f'process == "{svc}" OR subsystem == "{svc}"']
+    return ["journalctl", "-u", svc, "-f"]
+
+
+def shutdown_delay_seconds(arg: str) -> int:
+    arg = (arg or "").strip()
+    if not arg or arg.lower() == "now":
+        return 0
+    if arg.isdigit():
+        return int(arg) * 60
+    if _CLOCK_TIME_RE.match(arg):
+        now = datetime.now()
+        hour, minute = [int(part) for part in arg.split(":", 1)]
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target < now:
+            target += timedelta(days=1)
+        return max(0, int((target - now).total_seconds()))
+    return 0
+
+
+def reboot_cmd(arg: str) -> list[str]:
+    if IS_WINDOWS:
+        delay = shutdown_delay_seconds(arg)
+        return ["shutdown", "/r", "/t", str(delay)]
+    return ["shutdown", "-r", shutdown_time_arg(arg)]
+
+
+def poweroff_cmd(arg: str) -> list[str]:
+    if IS_WINDOWS:
+        delay = shutdown_delay_seconds(arg)
+        return ["shutdown", "/s", "/t", str(delay)]
+    return ["shutdown", "-h", shutdown_time_arg(arg)]
+
+
+def cancel_shutdown_cmd() -> list[str]:
+    if IS_WINDOWS:
+        return ["shutdown", "/a"]
+    return ["shutdown", "-c"]
+
+
+def list_cmd(arg: str) -> list[str]:
+    if IS_WINDOWS:
+        if arg.lower() == "all":
+            return ["cmd", "/c", "dir", "/a"]
+        return ["cmd", "/c", "dir", arg] if arg else ["cmd", "/c", "dir"]
+    return ["ls", "-la", "--color=always"] if arg.lower() == "all" else (["ls", "--color=always", arg] if arg else ["ls", "--color=always"])
+
+
+def ip_cmd() -> list[str]:
+    if IS_WINDOWS:
+        return ["ipconfig", "/all"]
+    if IS_MACOS:
+        return ["ifconfig"]
+    return ["ip", "-c=always", "a"]
+
+
+def port_cmd(arg: str) -> list[str]:
+    if IS_WINDOWS:
+        if arg.isdigit():
+            script = (
+                f"$port = {int(arg)}; "
+                "Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue "
+                "| Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess "
+                "| Format-Table -AutoSize"
+            )
+        else:
+            pattern = ps_quote(f"*{arg}*")
+            script = (
+                "$procs = Get-Process | Where-Object { $_.ProcessName -like " + pattern + " }; "
+                "$ids = $procs.Id; "
+                "Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $ids -contains $_.OwningProcess } "
+                "| Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess "
+                "| Format-Table -AutoSize"
+            )
+        return ps_command(script)
+    if IS_MACOS:
+        if arg.isdigit():
+            return ["lsof", "-i", f":{arg}", "-n", "-P"]
+        return ["bash", "-c", f"lsof -i -n -P | grep -i {shlex.quote(arg)}"]
+    return [
+        "bash", "-c",
+        "ss -tulnp | awk -v port=" + shlex.quote(arg) + " "
+        + shlex.quote(
+            'NR==1 || $0 ~ (":" port "[[:space:]]")'
+            if arg.isdigit() else
+            'NR==1 || tolower($0) ~ tolower(port)'
+        )
+    ]
+
+
+def containers_cmd() -> list[str]:
+    if IS_WINDOWS:
+        return ps_command(
+            "$found = $false; "
+            "if (Get-Command docker -ErrorAction SilentlyContinue) { "
+            "$found = $true; Write-Host '== DOCKER CONTAINERS =='; docker ps -a }; "
+            "if (Get-Command wsl -ErrorAction SilentlyContinue) { "
+            "$found = $true; Write-Host ''; Write-Host '== WSL DISTROS =='; wsl --list --verbose }; "
+            "if (-not $found) { Write-Host 'No supported platform detected (docker, wsl).' }"
+        )
+    return [
+        "bash", "-c",
+        r'''
+found=0
+if command -v docker >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== DOCKER CONTAINERS ==\033[0m\n'
+    docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' \
+        | awk -F'\t' 'BEGIN{printf "\033[1;4m%-20s %-25s %-20s %s\033[0m\n","NAME","IMAGE","STATUS","PORTS"}
+                      {c=($3~/^Up/)?"32":"31"; printf "\033[%sm%-20s\033[0m %-25s %-20s %s\n",c,$1,$2,$3,$4}'
+    echo
+fi
+if command -v pct >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== PROXMOX LXC CONTAINERS ==\033[0m\n'
+    pct list
+    echo
+fi
+if command -v qm >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== PROXMOX VMs ==\033[0m\n'
+    qm list
+    echo
+fi
+if command -v vim-cmd >/dev/null 2>&1; then
+    found=1
+    printf '\033[1;36m== ESXI VMs ==\033[0m\n'
+    vim-cmd vmsvc/getallvms
+    echo
+fi
+if [ "$found" -eq 0 ]; then
+    printf '\033[31mNo supported platform detected (docker, proxmox pct/qm, esxi vim-cmd).\033[0m\n'
+fi
+'''
+    ]
+
+
+def build_commands(manager: str | None, names: dict) -> dict:
+    """`names` is a dict of zero-arg/one-arg callables returning current candidate
+    lists: {"service": ..., "installed_pkg": ..., "available_pkg": ...}"""
+
+    commands = {
+        "status": Command(
+            run=system_status_cmd,
+            desc="Show the status of a service",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "start": Command(
+            run=system_start_cmd,
+            desc="Start a service",
+            needs_sudo=True,
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "stop": Command(
+            run=system_stop_cmd,
+            desc="Stop a service",
+            needs_sudo=True,
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "restart": Command(
+            run=system_restart_cmd,
+            desc="Restart a service",
+            needs_sudo=True,
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "logs": Command(
+            run=system_logs_cmd,
+            desc="Show recent logs for a service",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "live": Command(
+            run=system_live_logs_cmd,
+            desc="Follow a service's logs live (Ctrl-C to stop)",
+            mode="stream",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "reboot": Command(
+            run=reboot_cmd,
+            desc="Reboot now, in N minutes, or at HH:MM ('reboot 10', 'reboot 23:30')",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "shutdown": Command(
+            run=poweroff_cmd,
+            desc="Power off now, in N minutes, or at HH:MM ('shutdown 10')",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "cancel": Command(
+            run=lambda _: cancel_shutdown_cmd(),
+            desc="Cancel a pending scheduled shutdown/reboot",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "list": Command(
+            run=list_cmd,
+            desc="List directory contents ('list all' for detailed view)",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "cd": Command(
+            run=lambda path: [],  # handled specially in main loop
+            desc="Change directory",
+            needs_arg=False,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "alias": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Add a shell alias interactively (auto-detects your shell)",
+            needs_arg=False,
+        ),
+        "ip": Command(
+            run=lambda _: ip_cmd(),
+            desc="Show IP addresses and network interfaces",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "netconfig": Command(
+            run=lambda adapter: [],  # handled specially in main loop
+            desc="Interactively configure DHCP/Static IP for an adapter",
+            needs_arg=True,
+            arg_completions=names["adapter"],
+            arg_completion_kind="adapter",
+        ),
+        "port": Command(
+            run=port_cmd,
+            desc="Show which program is using a port (by port number or program name)",
+            needs_sudo=True,
+            mode="capture",
+        ),
+        "containers": Command(
+            run=lambda _: containers_cmd(),
+            desc="Auto-detect and list containers/VMs (Docker, Proxmox LXC/VM, ESXi)",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="capture",
+        ),
+        "open": Command(
+            run=lambda path: [],  # handled specially in main loop
+            desc="Open a folder (cd) or file (nano); no arg shows cwd",
+            needs_arg=False,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "back": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Go back to parent directory (cd ..)",
+            needs_arg=False,
+        ),
+        # -- Universal file-system commands (Python shutil, same on all OSes) --
+        "copy": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Copy a file or folder: copy <src> <dest>",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "move": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Move or rename a file or folder: move <src> <dest>",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "remove": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Delete a file or folder (confirms for non-empty dirs)",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "mkdir": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Create a directory (including parents): mkdir <path>",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+    }
+
+    if manager:
+        commands["install"] = Command(
+            run=lambda pkg: MANAGER_PKG[manager]["install"](pkg),
+            desc=f"Install a package (via {MANAGER_DISPLAY_NAME[manager]})",
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["available_pkg"],
+            arg_completion_kind="available_pkg",
+        )
+        commands["remove"] = Command(
+            run=lambda pkg: MANAGER_PKG[manager]["remove"](pkg),
+            desc=f"Remove a package (via {MANAGER_DISPLAY_NAME[manager]})",
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["installed_pkg"],
+            arg_completion_kind="installed_pkg",
+        )
+        commands["update"] = Command(
+            run=lambda _: shell_command(MANAGER_UPDATE_CMDS[manager]),
+            desc=f"Update the system (via {MANAGER_DISPLAY_NAME[manager]})",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+        )
+
+    return commands
