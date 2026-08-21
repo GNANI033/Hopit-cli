@@ -275,11 +275,50 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
     elif cmd == "firewall":
         if len(words) == 2:
             fw_subs = {
-                "status": "Check firewall rule profiles and status",
+                "status": "Check active firewall rule profiles and status",
                 "allow": "Allow inbound traffic on port",
                 "block": "Block inbound traffic on port",
+                "deny": "Block inbound traffic on port",
+                "delete": "Delete a specific firewall rule by ID or port",
+                "remove": "Delete a specific firewall rule by ID or port",
             }
             return [(k, v) for k, v in fw_subs.items()]
+
+        sub = words[1].lower()
+        if sub in ("delete", "remove"):
+            if len(words) == 3:
+                try:
+                    from hopit.firewall import parse_firewall_rules
+                    rules = parse_firewall_rules()
+                    return [(str(r["id"]), f"Rule #{r['id']}: {r['name']} ({r['port']}/{r['proto']})") for r in rules]
+                except Exception:
+                    return [("1", "Rule #1"), ("2", "Rule #2")]
+        elif sub in ("allow", "block", "deny"):
+            if len(words) == 3:
+                return [
+                    ("80", "HTTP Web Server"),
+                    ("443", "HTTPS Secure Web"),
+                    ("22", "SSH Remote Access"),
+                    ("8080", "Web Alt / App Server"),
+                    ("3306", "MySQL Database"),
+                    ("5432", "PostgreSQL Database"),
+                    ("27017", "MongoDB Database"),
+                    ("6379", "Redis Cache"),
+                ]
+            elif len(words) == 4:
+                return [
+                    ("tcp", "Transmission Control Protocol (Default)"),
+                    ("udp", "User Datagram Protocol"),
+                    ("both", "Both TCP and UDP protocols"),
+                ]
+            elif len(words) == 5:
+                from hopit.loaders import load_adapters
+                ifaces = load_adapters()
+                res = [("all", "All network interfaces")]
+                for i in ifaces:
+                    if i != "all":
+                        res.append((i, "🌐 network adapter"))
+                return res
 
     elif cmd in ("disk", "drive"):
         if len(words) == 2:
