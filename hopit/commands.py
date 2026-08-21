@@ -466,7 +466,7 @@ def firewall_cmd(arg: str) -> list[str]:
     
     if IS_WINDOWS:
         if sub == "status":
-            return ps_command("Get-NetFirewallProfile | Select-Object Name, Enabled")
+            return ps_command("Get-NetFirewallRule | Where-Object {$_.Enabled -eq $True -and $_.Direction -eq 'Inbound'} | Select-Object DisplayName, Action, LocalPort | Format-Table -AutoSize")
         elif sub == "allow":
             if not target:
                 return []
@@ -479,7 +479,7 @@ def firewall_cmd(arg: str) -> list[str]:
 
     if IS_MACOS:
         if sub == "status":
-            return ["sudo", "pfctl", "-s", "info"]
+            return ["sudo", "pfctl", "-sr"]
         elif sub == "allow":
             if not target:
                 return []
@@ -494,7 +494,7 @@ def firewall_cmd(arg: str) -> list[str]:
     # 1. firewalld (Fedora / RHEL / CentOS / AlmaLinux / Rocky / openSUSE)
     if shutil.which("firewall-cmd"):
         if sub == "status":
-            return ["firewall-cmd", "--state"]
+            return ["firewall-cmd", "--list-all"]
         elif sub == "allow":
             if not target:
                 return []
@@ -507,7 +507,7 @@ def firewall_cmd(arg: str) -> list[str]:
     # 2. ufw (Ubuntu / Debian / Mint)
     if shutil.which("ufw"):
         if sub == "status":
-            return ["ufw", "status"]
+            return ["ufw", "status", "verbose"]
         elif sub == "allow":
             if not target:
                 return []
@@ -545,7 +545,7 @@ def firewall_cmd(arg: str) -> list[str]:
 
     # Fallback to ufw
     if sub == "status":
-        return ["ufw", "status"]
+        return ["ufw", "status", "verbose"]
     elif sub == "allow":
         return ["ufw", "allow", target] if target else []
     elif sub in ("block", "deny"):
