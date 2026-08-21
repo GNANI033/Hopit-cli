@@ -435,12 +435,92 @@ def load_available_packages(manager: Optional[str], prefix: str = "") -> List[st
     return sorted(set(l.strip() for l in lines if l.strip()))
 
 
-def load_path_entries() -> List[str]:
-    """List files and directories in the current working directory."""
+def load_path_entries(prefix: str = "") -> List[str]:
+    """Smart path tab-completion that follows directory prefixes.
+
+    With no prefix: lists cwd entries.
+    With 'src/fo':  lists src/ and returns 'src/foo', 'src/bar/' etc.
+    With '/etc/h':  lists /etc/ and returns '/etc/hosts' etc.
+    Trailing / is appended to directories so Tab-again drills in.
+    """
     try:
-        return sorted(os.listdir("."))
+        sep = "\\" if (IS_WINDOWS and "\\" in (prefix or "")) else "/"
+        if prefix:
+            exp = os.path.expanduser(prefix)
+            has_sep = "/" in prefix or (IS_WINDOWS and "\\" in prefix)
+            dir_exp  = os.path.dirname(exp)  if has_sep else "."
+            dir_orig = os.path.dirname(prefix) if has_sep else ""
+            if not dir_exp:
+                dir_exp = "."
+        else:
+            dir_exp = "."
+            dir_orig = ""
+        entries = []
+        for name in sorted(os.listdir(dir_exp)):
+            full = (dir_orig.rstrip("/\\") + sep + name) if dir_orig else name
+            if os.path.isdir(os.path.join(dir_exp, name)):
+                full += sep
+            entries.append(full)
+        return entries
     except OSError:
         return []
+
+
+# --------------------------------------------------------------------------
+# Cross-platform shell command translation
+# --------------------------------------------------------------------------
+
+# When a user types a native command that doesn't exist on the current OS,
+# lazyctl translates it before passing to the shell.
+# key = command the user typed, value = lambda(args_list) -> translated_string
+
+_UNIX_TO_WIN: dict = {
+    "cp":     lambda a: (f'xcopy /E /I /H /Y "{a[0]}" "{a[1]}"' if len(a) >= 2 and os.path.isdir(a[0])
+                         else ('copy ' + ' '.join(f'"{x}"' for x in a))),
+    "mv":     lambda a: 'move ' + ' '.join(f'"{x}"' for x in a),
+    "rm":     lambda a: ('rd /s /q ' if any(x in ('-r','-rf','-fr') for x in a) else 'del /Q ')
+                        + ' '.join(f'"{x}"' for x in a if not x.startswith('-')),
+    "ls":     lambda a: 'dir ' + ' '.join(a),
+    "cat":    lambda a: 'type ' + ' '.join(f'"{x}"' for x in a),
+    "touch":  lambda a: f'type nul > "{a[0]}"' if a else 'type nul',
+    "grep":   lambda a: 'findstr ' + ' '.join(a),
+    "which":  lambda a: 'where ' + ' '.join(a),
+    "clear":  lambda a: 'cls',
+    "pwd":    lambda a: 'cd',
+    "find":   lambda a: 'dir /s /b ' + ' '.join(a),
+    "chmod":  lambda a: '',   # no-op on Windows, just ignore
+    "chown":  lambda a: '',
+    "echo":   lambda a: 'echo ' + ' '.join(a),
+}
+
+_WIN_TO_UNIX: dict = {
+    "del":    lambda a: 'rm ' + ' '.join(f'"{x}"' for x in a),
+    "rd":     lambda a: 'rm -rf ' + ' '.join(f'"{x}"' for x in a),
+    "dir":    lambda a: 'ls ' + ' '.join(a),
+    "type":   lambda a: 'cat ' + ' '.join(f'"{x}"' for x in a),
+    "cls":    lambda a: 'clear',
+    "where":  lambda a: 'which ' + ' '.join(a),
+    "xcopy":  lambda a: 'cp -r ' + ' '.join(f'"{x}"' for x in a),
+    "md":     lambda a: 'mkdir -p ' + ' '.join(f'"{x}"' for x in a),
+    "ren":    lambda a: 'mv ' + ' '.join(f'"{x}"' for x in a),
+    "echo":   lambda a: 'echo ' + ' '.join(a),
+    "ipconfig": lambda a: 'ip a',
+}
+
+
+def translate_cross_platform(tokens: List[str]) -> Optional[str]:
+    """If tokens[0] is a foreign-OS command known to this translator,
+    return the translated shell string; otherwise None."""
+    if not tokens:
+        return None
+    cmd = tokens[0].lower()
+    args = tokens[1:]
+    table = _UNIX_TO_WIN if IS_WINDOWS else _WIN_TO_UNIX
+    fn = table.get(cmd)
+    if fn is None:
+        return None
+    translated = fn(args)
+    return translated if translated else None
 
 
 def load_adapters() -> List[str]:
@@ -938,6 +1018,35 @@ def build_commands(manager: Optional[str], names) -> dict:
             desc="Go back to parent directory (cd ..)",
             needs_arg=False,
         ),
+        # ── Universal file-system commands (Python shutil, same on all OSes) ──
+        "copy": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Copy a file or folder: copy <src> <dest>",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "move": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Move or rename a file or folder: move <src> <dest>",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "remove": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Delete a file or folder (confirms for non-empty dirs)",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "mkdir": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Create a directory (including parents): mkdir <path>",
+            needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
     }
 
     if manager:
@@ -1015,10 +1124,11 @@ def completion_matches(text_before_cursor: str, commands: dict, all_names: List[
     if len(word) < min_prefix:
         return []
 
-    # For available_pkg completions, pass the current word as a prefix hint
-    # so that winget-style live search gets the right query.
+    # path and available_pkg completions receive the current typed word as a
+    # prefix so they can list the right directory / run the right search.
+    kind = cmd.arg_completion_kind or ""
     try:
-        if cmd.arg_completion_kind == "available_pkg":
+        if kind in ("path", "available_pkg"):
             candidates = cmd.arg_completions(word)
         else:
             candidates = cmd.arg_completions()
@@ -1311,12 +1421,20 @@ def main():
                     + ", ".join(f"[bold]{m}[/bold]" for m in ambiguous)
                 )
             else:
-                # Fallback: expand aliases then run as a raw shell command
-                expanded = expand_aliases(line, aliases)
-                try:
-                    run_shell_line(expanded, shell)
-                except Exception as e:
-                    console.print(f"[red]Command failed: {e}[/red]")
+                # Try cross-platform translation first (cp→copy, del→rm, etc.)
+                translated = translate_cross_platform(tokens)
+                if translated is not None:
+                    try:
+                        run_shell_line(translated, shell)
+                    except Exception as e:
+                        console.print(f"[red]Command failed: {e}[/red]")
+                else:
+                    # Fallback: expand aliases then run as a raw shell command
+                    expanded = expand_aliases(line, aliases)
+                    try:
+                        run_shell_line(expanded, shell)
+                    except Exception as e:
+                        console.print(f"[red]Command failed: {e}[/red]")
             continue
 
         if name == "help":
@@ -1412,6 +1530,71 @@ def main():
                     console.print(f"[dim]Saved to {rc_path} — run 'source {rc_path}' in a new terminal to apply globally.[/dim]")
             except KeyboardInterrupt:
                 console.print("\n[dim]Cancelled.[/dim]")
+            continue
+
+        # ── Universal file-system operations (Python shutil) ─────────────────
+        if name == "copy":
+            if not rest:
+                console.print("[yellow]Usage: copy <src> <dest>[/yellow]")
+                continue
+            src  = os.path.expanduser(rest[0])
+            dest = os.path.expanduser(rest[1]) if len(rest) > 1 else "."
+            try:
+                if os.path.isdir(src):
+                    dst = dest if not os.path.exists(dest) else os.path.join(dest, os.path.basename(src))
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dest)
+                console.print(f"[green]Copied[/green] {src} → {dest}")
+            except Exception as e:
+                console.print(f"[red]copy: {e}[/red]")
+            continue
+
+        if name == "move":
+            if len(rest) < 2:
+                console.print("[yellow]Usage: move <src> <dest>[/yellow]")
+                continue
+            src  = os.path.expanduser(rest[0])
+            dest = os.path.expanduser(rest[1])
+            try:
+                shutil.move(src, dest)
+                console.print(f"[green]Moved[/green] {src} → {dest}")
+            except Exception as e:
+                console.print(f"[red]move: {e}[/red]")
+            continue
+
+        if name == "remove":
+            if not rest:
+                console.print("[yellow]Usage: remove <path>[/yellow]")
+                continue
+            target = os.path.expanduser(rest[0])
+            try:
+                if os.path.isdir(target):
+                    if os.listdir(target):  # non-empty dir — ask first
+                        ans = prompt(
+                            [("class:prompt", f"Remove '{target}' and all its contents? [y/N]: ")],
+                            style=style,
+                        ).strip().lower()
+                        if ans != "y":
+                            console.print("[dim]Cancelled.[/dim]")
+                            continue
+                    shutil.rmtree(target)
+                else:
+                    os.remove(target)
+                console.print(f"[green]Removed[/green] {target}")
+            except Exception as e:
+                console.print(f"[red]remove: {e}[/red]")
+            continue
+
+        if name == "mkdir":
+            if not rest:
+                console.print("[yellow]Usage: mkdir <path>[/yellow]")
+                continue
+            try:
+                os.makedirs(os.path.expanduser(rest[0]), exist_ok=True)
+                console.print(f"[green]Created[/green] {rest[0]}")
+            except Exception as e:
+                console.print(f"[red]mkdir: {e}[/red]")
             continue
 
         if name == "netconfig":
