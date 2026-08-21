@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-lazyctl — a fast TUI overlay that makes common Linux admin commands short and
+lazyctl — a fast TUI overlay that makes common admin commands short and
 tab-completable, instead of typing the full underlying command every time.
 
 Everything — real commands AND builtins like 'help'/'clear'/'exit' — goes
@@ -41,7 +41,7 @@ import shutil
 import subprocess
 import threading
 import getpass
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -57,6 +57,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 console = Console()
+IS_WINDOWS = os.name == "nt"
 
 
 # --------------------------------------------------------------------------
@@ -100,6 +101,7 @@ MIN_ARG_PREFIX_CHARS = {
 MANAGER_DISPLAY_NAME = {
     "apt-get": "apt", "dnf": "dnf", "yum": "yum",
     "pacman": "pacman", "zypper": "zypper", "apk": "apk",
+    "winget": "winget", "choco": "choco", "scoop": "scoop",
 }
 
 MANAGER_UPDATE_CMDS = {
@@ -109,6 +111,9 @@ MANAGER_UPDATE_CMDS = {
     "pacman":  "pacman -Syu --noconfirm",
     "zypper":  "zypper --non-interactive update",
     "apk":     "apk update && apk upgrade",
+    "winget":  "winget upgrade --all --accept-package-agreements --accept-source-agreements",
+    "choco":   "choco upgrade all -y",
+    "scoop":   "scoop update *",
 }
 
 # Per-manager package install/remove argv builders, plus how to enumerate
@@ -156,12 +161,42 @@ MANAGER_PKG = {
         "available_cmd": ["apk", "search", "-q"],
         "available_parse": None,
     },
+    "winget": {
+        "install": lambda pkg: ["winget", "install", "--id", pkg, "--accept-package-agreements", "--accept-source-agreements"],
+        "remove": lambda pkg: ["winget", "uninstall", "--id", pkg],
+        "installed_cmd": ["winget", "list", "--accept-source-agreements"],
+        # available_cmd uses a prefix-aware search — see load_available_packages() for the winget branch
+        "available_cmd": "winget_search",
+        "installed_parse": "winget",
+        "available_parse": "winget",
+    },
+    "choco": {
+        "install": lambda pkg: ["choco", "install", pkg, "-y"],
+        "remove": lambda pkg: ["choco", "uninstall", pkg, "-y"],
+        "installed_cmd": ["choco", "list", "--local-only", "--limit-output"],
+        "available_cmd": None,
+        "installed_parse": "choco",
+        "available_parse": None,
+    },
+    "scoop": {
+        "install": lambda pkg: ["scoop", "install", pkg],
+        "remove": lambda pkg: ["scoop", "uninstall", pkg],
+        "installed_cmd": ["scoop", "list"],
+        "available_cmd": None,
+        "installed_parse": "scoop",
+        "available_parse": None,
+    },
 }
 
 
 def detect_package_manager() -> Optional[str]:
     """Detect by checking which manager binary is actually on PATH —
     more reliable across distro derivatives than parsing os-release."""
+    if IS_WINDOWS:
+        for mgr in ("winget", "choco", "scoop"):
+            if shutil.which(mgr):
+                return mgr
+        return None
     for mgr in ("apt-get", "dnf", "yum", "pacman", "zypper", "apk"):
         if shutil.which(mgr):
             return mgr
@@ -169,6 +204,15 @@ def detect_package_manager() -> Optional[str]:
 
 
 def read_os_pretty_name() -> str:
+    if IS_WINDOWS:
+        try:
+            proc = subprocess.run(
+                ["cmd", "/c", "ver"],
+                capture_output=True, text=True, timeout=2,
+            )
+            return proc.stdout.strip() or "Windows"
+        except Exception:
+            return "Windows"
     try:
         with open("/etc/os-release") as f:
             for line in f:
@@ -181,6 +225,11 @@ def read_os_pretty_name() -> str:
 
 def detect_editor() -> Optional[str]:
     """Return the first available text editor, preferring nano."""
+    if IS_WINDOWS:
+        for editor in ("notepad.exe", "code.cmd", "code.exe"):
+            if shutil.which(editor):
+                return editor
+        return "notepad.exe"
     for editor in ("nano", "vim", "vi", "micro", "ne", "joe", "emacs"):
         if shutil.which(editor):
             return editor
@@ -201,6 +250,13 @@ def get_git_branch() -> Optional[str]:
 
 
 def with_privilege(argv: List[str], needs_sudo: bool) -> List[str]:
+    """On Linux, prepend sudo when needed. On Windows, privileges must be
+    requested via UAC at launch time — we can only warn here, not escalate."""
+    if IS_WINDOWS:
+        # Cannot programmatically elevate mid-session on Windows without
+        # spawning a new elevated process. We return argv as-is and rely on
+        # the user having launched the terminal as Administrator when needed.
+        return argv
     if needs_sudo and os.geteuid() != 0:
         return ["sudo"] + argv
     return argv
@@ -219,6 +275,13 @@ def _run_lines(argv: List[str], timeout: int) -> List[str]:
 
 
 def load_service_names() -> List[str]:
+    if IS_WINDOWS:
+        lines = _run_lines(
+            ["powershell", "-NoProfile", "-Command", "Get-Service | Select-Object -ExpandProperty Name"],
+            timeout=5,
+        )
+        return sorted(set(l.strip() for l in lines if l.strip()))
+
     lines = _run_lines(
         ["systemctl", "list-unit-files", "--type=service", "--no-legend", "--no-pager"],
         timeout=3,
@@ -231,11 +294,77 @@ def load_service_names() -> List[str]:
     return sorted(names)
 
 
+def _parse_winget_installed(lines: List[str]) -> List[str]:
+    """Parse 'winget list' output — extract the package ID column (col 1)."""
+    names = []
+    header_found = False
+    for line in lines:
+        line = line.rstrip()
+        if not line:
+            continue
+        # Skip until we hit the dashed separator line (---...---)
+        if re.match(r"^[-\s]+$", line):
+            header_found = True
+            continue
+        if not header_found:
+            continue
+        parts = re.split(r"\s{2,}", line.strip())
+        if len(parts) >= 2:
+            names.append(parts[1])  # ID column
+    return names
+
+
+def _parse_winget_available(lines: List[str]) -> List[str]:
+    """Parse 'winget search <prefix>' output — extract the package ID column."""
+    names = []
+    header_found = False
+    for line in lines:
+        line = line.rstrip()
+        if not line:
+            continue
+        if re.match(r"^[-\s]+$", line):
+            header_found = True
+            continue
+        if not header_found:
+            continue
+        parts = re.split(r"\s{2,}", line.strip())
+        if len(parts) >= 2:
+            names.append(parts[1])  # ID column
+    return names
+
+
+def _parse_choco_installed(lines: List[str]) -> List[str]:
+    names = []
+    for line in lines:
+        line = line.strip()
+        if "|" in line:
+            names.append(line.split("|", 1)[0])
+    return names
+
+
+def _parse_scoop_installed(lines: List[str]) -> List[str]:
+    names = []
+    for line in lines:
+        line = line.strip()
+        if not line or line.lower().startswith(("installed", "name ")):
+            continue
+        names.append(line.split()[0])
+    return names
+
+
 def load_installed_packages(manager: Optional[str]) -> List[str]:
     if not manager:
         return []
-    cmd = MANAGER_PKG[manager]["installed_cmd"]
+    cfg = MANAGER_PKG[manager]
+    cmd = cfg["installed_cmd"]
     lines = _run_lines(cmd, timeout=5)
+    parser = cfg.get("installed_parse")
+    if parser == "winget":
+        return sorted(set(_parse_winget_installed(lines)))
+    if parser == "choco":
+        return sorted(set(_parse_choco_installed(lines)))
+    if parser == "scoop":
+        return sorted(set(_parse_scoop_installed(lines)))
     return sorted(set(l.strip() for l in lines if l.strip()))
 
 
@@ -252,13 +381,29 @@ def _parse_yum_available(lines: List[str]) -> List[str]:
     return names
 
 
-def load_available_packages(manager: Optional[str]) -> List[str]:
+def load_available_packages(manager: Optional[str], prefix: str = "") -> List[str]:
+    """Load available packages for tab-completion.
+
+    For winget, we run 'winget search <prefix>' on demand (fast, bounded results).
+    For other managers we run the full listing command once at startup.
+    """
     if not manager:
         return []
     cfg = MANAGER_PKG[manager]
     cmd = cfg.get("available_cmd")
     if not cmd:
         return []
+
+    # winget: do a live prefix search rather than listing everything
+    if cmd == "winget_search":
+        if len(prefix) < 2:
+            return []  # require at least 2 chars before hitting the network
+        lines = _run_lines(
+            ["winget", "search", prefix, "--accept-source-agreements", "--limit", "40"],
+            timeout=10,
+        )
+        return _parse_winget_available(lines)
+
     lines = _run_lines(cmd, timeout=20)
     if cfg.get("available_parse") == "yum":
         return sorted(set(_parse_yum_available(lines)))
@@ -275,6 +420,12 @@ def load_path_entries() -> List[str]:
 
 def load_adapters() -> List[str]:
     """List network adapters on the system."""
+    if IS_WINDOWS:
+        lines = _run_lines(
+            ["powershell", "-NoProfile", "-Command", "Get-NetAdapter | Select-Object -ExpandProperty Name"],
+            timeout=5,
+        )
+        return sorted(set(l.strip() for l in lines if l.strip()))
     try:
         return sorted(os.listdir('/sys/class/net/'))
     except OSError:
@@ -287,6 +438,8 @@ def load_adapters() -> List[str]:
 
 def detect_user_shell() -> str:
     """Return the user's login shell binary path (e.g. /bin/bash, /bin/zsh)."""
+    if IS_WINDOWS:
+        return os.environ.get("COMSPEC") or "cmd.exe"
     shell = os.environ.get("SHELL", "")
     if shell:
         return shell
@@ -299,6 +452,8 @@ def detect_user_shell() -> str:
 
 def shell_rc_file(shell: str) -> str:
     """Return the primary rc file path for the given shell binary."""
+    if IS_WINDOWS:
+        return os.path.expanduser(r"~\lazyctl-aliases.cmd")
     name = os.path.basename(shell)
     rc_map = {
         "bash":  os.path.expanduser("~/.bashrc"),
@@ -312,6 +467,8 @@ def shell_rc_file(shell: str) -> str:
 
 def load_shell_aliases(shell: str) -> dict:
     """Ask the user's shell to dump all its aliases and return them as a dict."""
+    if IS_WINDOWS:
+        return {}
     try:
         # -i = interactive (sources rc), -c 'alias' prints all aliases
         result = subprocess.run(
@@ -342,7 +499,7 @@ def expand_aliases(line: str, aliases: dict) -> str:
     if not aliases:
         return line
     try:
-        tokens = shlex.split(line)
+        tokens = shlex.split(line, posix=not IS_WINDOWS)
     except ValueError:
         return line
     if not tokens:
@@ -358,6 +515,11 @@ def expand_aliases(line: str, aliases: dict) -> str:
 def write_alias_to_rc(shell: str, name: str, value: str) -> str:
     """Append an alias definition to the user's rc file. Returns the rc path."""
     rc = shell_rc_file(shell)
+    if IS_WINDOWS:
+        line = f"\ndoskey {name}={value} $*\n"
+        with open(rc, "a") as f:
+            f.write(line)
+        return rc
     shell_name = os.path.basename(shell)
     if shell_name == "fish":
         line = f"\nabbr --add {name} '{value}'\n"
@@ -366,6 +528,19 @@ def write_alias_to_rc(shell: str, name: str, value: str) -> str:
     with open(rc, "a") as f:
         f.write(line)
     return rc
+
+
+def run_shell_line(line: str, shell: str):
+    if IS_WINDOWS:
+        subprocess.run(line, shell=True)
+    else:
+        subprocess.run(line, shell=True, executable=shell)
+
+
+def shell_command(line: str) -> List[str]:
+    if IS_WINDOWS:
+        return ["cmd", "/c", line]
+    return ["bash", "-c", line]
 
 
 class BackgroundNames:
@@ -422,128 +597,160 @@ def shutdown_time_arg(arg: str) -> str:
     return arg  # covers valid HH:MM and anything invalid (shutdown will say so)
 
 
-# --------------------------------------------------------------------------
-# Build the command registry
-# --------------------------------------------------------------------------
+def ps_command(script: str) -> List[str]:
+    return ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script]
 
-def build_commands(manager: Optional[str], names) -> dict:
-    """`names` is a dict of zero-arg callables returning current candidate
-    lists: {"service": ..., "installed_pkg": ..., "available_pkg": ...}"""
 
-    commands = {
-        "status": Command(
-            run=lambda svc: ["systemctl", "status", svc],
-            desc="Show the status of a service",
-            arg_completions=names["service"],
-            arg_completion_kind="service",
-        ),
-        "start": Command(
-            run=lambda svc: ["systemctl", "start", svc],
-            desc="Start a service",
-            needs_sudo=True,
-            arg_completions=names["service"],
-            arg_completion_kind="service",
-        ),
-        "stop": Command(
-            run=lambda svc: ["systemctl", "stop", svc],
-            desc="Stop a service",
-            needs_sudo=True,
-            arg_completions=names["service"],
-            arg_completion_kind="service",
-        ),
-        "restart": Command(
-            run=lambda svc: ["systemctl", "restart", svc],
-            desc="Restart a service",
-            needs_sudo=True,
-            arg_completions=names["service"],
-            arg_completion_kind="service",
-        ),
-        "logs": Command(
-            run=lambda svc: ["journalctl", "-u", svc, "-n", "50", "--no-pager"],
-            desc="Show recent logs for a service",
-            arg_completions=names["service"],
-            arg_completion_kind="service",
-        ),
-        "live": Command(
-            run=lambda svc: ["journalctl", "-u", svc, "-f"],
-            desc="Follow a service's logs live (Ctrl-C to stop)",
-            mode="stream",
-            arg_completions=names["service"],
-            arg_completion_kind="service",
-        ),
-        "reboot": Command(
-            run=lambda arg: ["shutdown", "-r", shutdown_time_arg(arg)],
-            desc="Reboot now, in N minutes, or at HH:MM ('reboot 10', 'reboot 23:30')",
-            needs_arg=False,
-            needs_sudo=True,
-            mode="stream",
-        ),
-        "shutdown": Command(
-            run=lambda arg: ["shutdown", "-h", shutdown_time_arg(arg)],
-            desc="Power off now, in N minutes, or at HH:MM ('shutdown 10')",
-            needs_arg=False,
-            needs_sudo=True,
-            mode="stream",
-        ),
-        "cancel": Command(
-            run=lambda _: ["shutdown", "-c"],
-            desc="Cancel a pending scheduled shutdown/reboot",
-            needs_arg=False,
-            needs_sudo=True,
-            mode="stream",
-        ),
-        "list": Command(
-            run=lambda arg: ["ls", "-la", "--color=always"] if arg.lower() == "all"
-                            else (["ls", "--color=always", arg] if arg else ["ls", "--color=always"]),
-            desc="List directory contents ('list all' for detailed view)",
-            needs_arg=False,
-            mode="stream",
-            arg_completions=names["path"],
-            arg_completion_kind="path",
-        ),
-        "cd": Command(
-            run=lambda path: [],  # handled specially in main loop
-            desc="Change directory",
-            needs_arg=False,
-            arg_completions=names["path"],
-            arg_completion_kind="path",
-        ),
-        "alias": Command(
-            run=lambda _: [],  # handled specially in main loop
-            desc="Add a shell alias interactively (auto-detects your shell)",
-            needs_arg=False,
-        ),
-        "ip": Command(
-            run=lambda _: ["ip", "-c=always", "a"],
-            desc="Show IP addresses and network interfaces",
-            needs_arg=False,
-            mode="capture",
-        ),
-        "netconfig": Command(
-            run=lambda adapter: [],  # handled specially in main loop
-            desc="Interactively configure DHCP/Static IP for an adapter",
-            needs_arg=True,
-            arg_completions=names["adapter"],
-            arg_completion_kind="adapter",
-        ),
-        "port": Command(
-            run=lambda arg: [
-                "bash", "-c",
-                "ss -tulnp | awk -v port=" + shlex.quote(arg) + " "
-                + shlex.quote(
-                    'NR==1 || $0 ~ (":" port "[[:space:]]")'
-                    if arg.isdigit() else
-                    'NR==1 || tolower($0) ~ tolower(port)'
-                )
-            ],
-            desc="Show which program is using a port (by port number or program name)",
-            needs_sudo=True,
-            mode="capture",
-        ),
-        "containers": Command(
-            run=lambda _: [
-                "bash", "-c",
-                r'''
+def ps_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def system_status_cmd(svc: str) -> List[str]:
+    if IS_WINDOWS:
+        return ["sc", "query", svc]
+    return ["systemctl", "status", svc]
+
+
+def system_start_cmd(svc: str) -> List[str]:
+    if IS_WINDOWS:
+        return ["sc", "start", svc]
+    return ["systemctl", "start", svc]
+
+
+def system_stop_cmd(svc: str) -> List[str]:
+    if IS_WINDOWS:
+        return ["sc", "stop", svc]
+    return ["systemctl", "stop", svc]
+
+
+def system_restart_cmd(svc: str) -> List[str]:
+    if IS_WINDOWS:
+        return ps_command(f"Restart-Service -Name {ps_quote(svc)}")
+    return ["systemctl", "restart", svc]
+
+
+def system_logs_cmd(svc: str) -> List[str]:
+    if IS_WINDOWS:
+        service = ps_quote(svc)
+        return ps_command(
+            "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
+            "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
+            "Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'} "
+            "-MaxEvents 50 | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) } "
+            "| Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap"
+        )
+    return ["journalctl", "-u", svc, "-n", "50", "--no-pager"]
+
+
+def system_live_logs_cmd(svc: str) -> List[str]:
+    if IS_WINDOWS:
+        service = ps_quote(svc)
+        return ps_command(
+            "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
+            "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
+            "$last = Get-Date; "
+            "while ($true) { "
+            "$events = Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$last; ProviderName='Service Control Manager'} "
+            "-ErrorAction SilentlyContinue | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) }; "
+            "$events | Sort-Object TimeCreated | Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap; "
+            "$last = Get-Date; Start-Sleep -Seconds 2 }"
+        )
+    return ["journalctl", "-u", svc, "-f"]
+
+
+def reboot_cmd(arg: str) -> List[str]:
+    if IS_WINDOWS:
+        delay = shutdown_delay_seconds(arg)
+        return ["shutdown", "/r", "/t", str(delay)]
+    return ["shutdown", "-r", shutdown_time_arg(arg)]
+
+
+def poweroff_cmd(arg: str) -> List[str]:
+    if IS_WINDOWS:
+        delay = shutdown_delay_seconds(arg)
+        return ["shutdown", "/s", "/t", str(delay)]
+    return ["shutdown", "-h", shutdown_time_arg(arg)]
+
+
+def cancel_shutdown_cmd() -> List[str]:
+    if IS_WINDOWS:
+        return ["shutdown", "/a"]
+    return ["shutdown", "-c"]
+
+
+def shutdown_delay_seconds(arg: str) -> int:
+    arg = (arg or "").strip()
+    if not arg or arg.lower() == "now":
+        return 0
+    if arg.isdigit():
+        return int(arg) * 60
+    if _CLOCK_TIME_RE.match(arg):
+        now = datetime.now()
+        hour, minute = [int(part) for part in arg.split(":", 1)]
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if target < now:
+            target += timedelta(days=1)
+        return max(0, int((target - now).total_seconds()))
+    return 0
+
+
+def list_cmd(arg: str) -> List[str]:
+    if IS_WINDOWS:
+        if arg.lower() == "all":
+            return ["cmd", "/c", "dir", "/a"]
+        return ["cmd", "/c", "dir", arg] if arg else ["cmd", "/c", "dir"]
+    return ["ls", "-la", "--color=always"] if arg.lower() == "all" else (["ls", "--color=always", arg] if arg else ["ls", "--color=always"])
+
+
+def ip_cmd() -> List[str]:
+    if IS_WINDOWS:
+        return ["ipconfig", "/all"]
+    return ["ip", "-c=always", "a"]
+
+
+def port_cmd(arg: str) -> List[str]:
+    if IS_WINDOWS:
+        if arg.isdigit():
+            script = (
+                f"$port = {int(arg)}; "
+                "Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue "
+                "| Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess "
+                "| Format-Table -AutoSize"
+            )
+        else:
+            pattern = ps_quote(f"*{arg}*")
+            script = (
+                "$procs = Get-Process | Where-Object { $_.ProcessName -like " + pattern + " }; "
+                "$ids = $procs.Id; "
+                "Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $ids -contains $_.OwningProcess } "
+                "| Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess "
+                "| Format-Table -AutoSize"
+            )
+        return ps_command(script)
+    return [
+        "bash", "-c",
+        "ss -tulnp | awk -v port=" + shlex.quote(arg) + " "
+        + shlex.quote(
+            'NR==1 || $0 ~ (":" port "[[:space:]]")'
+            if arg.isdigit() else
+            'NR==1 || tolower($0) ~ tolower(port)'
+        )
+    ]
+
+
+def containers_cmd() -> List[str]:
+    if IS_WINDOWS:
+        return ps_command(
+            "$found = $false; "
+            "if (Get-Command docker -ErrorAction SilentlyContinue) { "
+            "$found = $true; Write-Host '== DOCKER CONTAINERS =='; docker ps -a }; "
+            "if (Get-Command wsl -ErrorAction SilentlyContinue) { "
+            "$found = $true; Write-Host ''; Write-Host '== WSL DISTROS =='; wsl --list --verbose }; "
+            "if (-not $found) { Write-Host 'No supported platform detected (docker, wsl).' }"
+        )
+    return [
+        "bash", "-c",
+        r'''
 found=0
 if command -v docker >/dev/null 2>&1; then
     found=1
@@ -575,7 +782,120 @@ if [ "$found" -eq 0 ]; then
     printf '\033[31mNo supported platform detected (docker, proxmox pct/qm, esxi vim-cmd).\033[0m\n'
 fi
 '''
-            ],
+    ]
+
+
+# --------------------------------------------------------------------------
+# Build the command registry
+# --------------------------------------------------------------------------
+
+def build_commands(manager: Optional[str], names) -> dict:
+    """`names` is a dict of zero-arg callables returning current candidate
+    lists: {"service": ..., "installed_pkg": ..., "available_pkg": ...}"""
+
+    commands = {
+        "status": Command(
+            run=system_status_cmd,
+            desc="Show the status of a service",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "start": Command(
+            run=system_start_cmd,
+            desc="Start a service",
+            needs_sudo=True,
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "stop": Command(
+            run=system_stop_cmd,
+            desc="Stop a service",
+            needs_sudo=True,
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "restart": Command(
+            run=system_restart_cmd,
+            desc="Restart a service",
+            needs_sudo=True,
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "logs": Command(
+            run=system_logs_cmd,
+            desc="Show recent logs for a service",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "live": Command(
+            run=system_live_logs_cmd,
+            desc="Follow a service's logs live (Ctrl-C to stop)",
+            mode="stream",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "reboot": Command(
+            run=reboot_cmd,
+            desc="Reboot now, in N minutes, or at HH:MM ('reboot 10', 'reboot 23:30')",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "shutdown": Command(
+            run=poweroff_cmd,
+            desc="Power off now, in N minutes, or at HH:MM ('shutdown 10')",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "cancel": Command(
+            run=lambda _: cancel_shutdown_cmd(),
+            desc="Cancel a pending scheduled shutdown/reboot",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "list": Command(
+            run=list_cmd,
+            desc="List directory contents ('list all' for detailed view)",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "cd": Command(
+            run=lambda path: [],  # handled specially in main loop
+            desc="Change directory",
+            needs_arg=False,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "alias": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Add a shell alias interactively (auto-detects your shell)",
+            needs_arg=False,
+        ),
+        "ip": Command(
+            run=lambda _: ip_cmd(),
+            desc="Show IP addresses and network interfaces",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "netconfig": Command(
+            run=lambda adapter: [],  # handled specially in main loop
+            desc="Interactively configure DHCP/Static IP for an adapter",
+            needs_arg=True,
+            arg_completions=names["adapter"],
+            arg_completion_kind="adapter",
+        ),
+        "port": Command(
+            run=port_cmd,
+            desc="Show which program is using a port (by port number or program name)",
+            needs_sudo=True,
+            mode="capture",
+        ),
+        "containers": Command(
+            run=lambda _: containers_cmd(),
             desc="Auto-detect and list containers/VMs (Docker, Proxmox LXC/VM, ESXi)",
             needs_arg=False,
             needs_sudo=True,
@@ -613,7 +933,7 @@ fi
             arg_completion_kind="installed_pkg",
         )
         commands["update"] = Command(
-            run=lambda _: ["bash", "-c", MANAGER_UPDATE_CMDS[manager]],
+            run=lambda _: shell_command(MANAGER_UPDATE_CMDS[manager]),
             desc=f"Update the system (via {MANAGER_DISPLAY_NAME[manager]})",
             needs_arg=False,
             needs_sudo=True,
@@ -670,9 +990,19 @@ def completion_matches(text_before_cursor: str, commands: dict, all_names: List[
     if len(word) < min_prefix:
         return []
 
+    # For available_pkg completions, pass the current word as a prefix hint
+    # so that winget-style live search gets the right query.
+    try:
+        if cmd.arg_completion_kind == "available_pkg":
+            candidates = cmd.arg_completions(word)
+        else:
+            candidates = cmd.arg_completions()
+    except TypeError:
+        candidates = cmd.arg_completions()
+
     matches = []
     word_lower = word.lower()
-    for cand in cmd.arg_completions():
+    for cand in candidates:
         if cand.lower().startswith(word_lower):
             matches.append(cand)
             if len(matches) >= MAX_ARG_COMPLETIONS:
@@ -737,7 +1067,8 @@ def print_help(commands: dict, manager: Optional[str]):
     table.add_column("Command", style="bold cyan")
     table.add_column("Description")
     for name, cmd in commands.items():
-        desc = cmd.desc + ("  [dim](sudo)[/dim]" if cmd.needs_sudo else "")
+        privilege_label = "admin" if IS_WINDOWS else "sudo"
+        desc = cmd.desc + (f"  [dim]({privilege_label})[/dim]" if cmd.needs_sudo else "")
         table.add_row(name, desc)
     for name, desc in BUILTIN_DESCRIPTIONS.items():
         if name == "quit":
@@ -756,13 +1087,72 @@ def print_help(commands: dict, manager: Optional[str]):
         console.print("[yellow]No supported package manager detected — install/remove/update unavailable.[/yellow]")
 
 
+def configure_windows_network(adapter: str, style):
+    adapters = load_adapters()
+    if adapter not in adapters:
+        console.print(f"[red]Adapter '{adapter}' not found on this system.[/red]")
+        return
+
+    try:
+        console.print(f"\n[bold cyan]Configuring {adapter}[/bold cyan]")
+
+        mode_completer = WordCompleter(["dhcp", "static", "up", "down"], ignore_case=True)
+        mode = prompt([("class:prompt", "Action [dhcp/static/up/down]: ")], completer=mode_completer, style=style).strip().lower()
+
+        if mode not in ("dhcp", "static", "up", "down"):
+            console.print("[red]Invalid action. Aborting.[/red]")
+            return
+
+        if mode == "up":
+            subprocess.run(["netsh", "interface", "set", "interface", adapter, "admin=enabled"])
+            console.print("[bold green]Done.[/bold green]")
+        elif mode == "down":
+            subprocess.run(["netsh", "interface", "set", "interface", adapter, "admin=disabled"])
+            console.print("[bold yellow]Done.[/bold yellow]")
+        elif mode == "dhcp":
+            console.print(f"[green]Applying DHCP to {adapter}...[/green]")
+            r1 = subprocess.run(["netsh", "interface", "ip", "set", "address", f"name={adapter}", "source=dhcp"])
+            r2 = subprocess.run(["netsh", "interface", "ip", "set", "dns", f"name={adapter}", "source=dhcp"])
+            if r1.returncode == 0 and r2.returncode == 0:
+                console.print("[bold green]Success![/bold green]")
+            else:
+                console.print("[yellow]netsh returned a non-zero exit code — verify with 'ip' command. "
+                              "You may need to run lazyctl as Administrator.[/yellow]")
+        else:
+            empty = DummyCompleter()
+            ip_addr = prompt([("class:prompt", "IP Address (e.g. 192.168.1.50): ")], completer=empty, style=style).strip()
+            mask = prompt([("class:prompt", "Subnet mask (e.g. 255.255.255.0): ")], completer=empty, style=style).strip()
+            gw = prompt([("class:prompt", "Gateway (e.g. 192.168.1.1): ")], completer=empty, style=style).strip()
+            dns = prompt([("class:prompt", "DNS (e.g. 8.8.8.8): ")], completer=empty, style=style).strip()
+
+            if not ip_addr or not mask:
+                console.print("[red]IP address and subnet mask are required. Aborting.[/red]")
+                return
+
+            console.print(f"[green]Applying static IP to {adapter}...[/green]")
+            cmd = ["netsh", "interface", "ip", "set", "address", f"name={adapter}", "static", ip_addr, mask]
+            if gw:
+                cmd.append(gw)
+            r1 = subprocess.run(cmd)
+            r2 = subprocess.CompletedProcess([], 0)  # default success
+            if dns:
+                r2 = subprocess.run(["netsh", "interface", "ip", "set", "dns", f"name={adapter}", "static", dns])
+            if r1.returncode == 0 and r2.returncode == 0:
+                console.print("[bold green]Success![/bold green]")
+            else:
+                console.print("[yellow]netsh returned a non-zero exit code — verify with 'ip' command. "
+                              "You may need to run lazyctl as Administrator.[/yellow]")
+    except KeyboardInterrupt:
+        console.print("\n[dim]Cancelled.[/dim]")
+
+
 # --------------------------------------------------------------------------
 # Main loop
 # --------------------------------------------------------------------------
 
 def main():
     # Clear the terminal on startup for a clean slate
-    os.system("clear")
+    os.system("cls" if IS_WINDOWS else "clear")
 
     manager = detect_package_manager()
     shell = detect_user_shell()
@@ -770,15 +1160,23 @@ def main():
 
     services = load_service_names()
     installed_pkgs = load_installed_packages(manager)               # fast enough to load synchronously
-    available_pkgs_holder = BackgroundNames(
-        lambda: load_available_packages(manager),
-        start_immediately=False,
-    )
+
+    # For winget, available package search is done live at completion time
+    # (passing the current prefix to `winget search`). For all other managers
+    # we pre-load the full list in the background as before.
+    if manager and MANAGER_PKG[manager].get("available_cmd") == "winget_search":
+        available_pkg_getter = lambda prefix="": load_available_packages(manager, prefix)
+    else:
+        available_pkgs_holder = BackgroundNames(
+            lambda: load_available_packages(manager),
+            start_immediately=False,
+        )
+        available_pkg_getter = available_pkgs_holder.get
 
     names = {
         "service": lambda: services,
         "installed_pkg": lambda: installed_pkgs,
-        "available_pkg": available_pkgs_holder.get,
+        "available_pkg": available_pkg_getter,
         "path": load_path_entries,
         "adapter": load_adapters,
     }
@@ -866,7 +1264,7 @@ def main():
             continue
 
         try:
-            tokens = shlex.split(line)
+            tokens = shlex.split(line, posix=not IS_WINDOWS)
         except ValueError as e:
             console.print(f"[red]Parse error: {e}[/red]")
             continue
@@ -885,7 +1283,7 @@ def main():
                 # Fallback: expand aliases then run as a raw shell command
                 expanded = expand_aliases(line, aliases)
                 try:
-                    subprocess.run(expanded, shell=True, executable=shell)
+                    run_shell_line(expanded, shell)
                 except Exception as e:
                     console.print(f"[red]Command failed: {e}[/red]")
             continue
@@ -977,7 +1375,10 @@ def main():
                 # Also register it live for this session
                 aliases[alias_name] = alias_val
                 console.print(f"[bold green]Alias added![/bold green] [cyan]{alias_name}[/cyan] → [yellow]{alias_val}[/yellow]")
-                console.print(f"[dim]Saved to {rc_path} — run 'source {rc_path}' in a new terminal to apply globally.[/dim]")
+                if IS_WINDOWS:
+                    console.print(f"[dim]Saved to {rc_path} — run it in a new Command Prompt to apply globally.[/dim]")
+                else:
+                    console.print(f"[dim]Saved to {rc_path} — run 'source {rc_path}' in a new terminal to apply globally.[/dim]")
             except KeyboardInterrupt:
                 console.print("\n[dim]Cancelled.[/dim]")
             continue
@@ -985,6 +1386,9 @@ def main():
         if name == "netconfig":
             if not rest:
                 console.print("[yellow]Please specify an adapter, e.g., 'netconfig eth0'[/yellow]")
+                continue
+            if IS_WINDOWS:
+                configure_windows_network(rest[0], style)
                 continue
             adapter = rest[0]
             if not os.path.exists(f"/sys/class/net/{adapter}"):
