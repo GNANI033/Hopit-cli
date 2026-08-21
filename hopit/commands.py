@@ -440,6 +440,134 @@ def permission_cmd(arg: str) -> list[str]:
     return []
 
 
+def service_cmd(arg: str) -> list[str]:
+    args = shlex.split(arg)
+    if not args:
+        return []
+    sub = args[0].lower()
+    rest = args[1:]
+    svc = rest[0] if rest else ""
+    
+    if sub == "status":
+        return system_status_cmd(svc)
+    elif sub == "start":
+        return system_start_cmd(svc)
+    elif sub == "stop":
+        return system_stop_cmd(svc)
+    elif sub == "restart":
+        return system_restart_cmd(svc)
+    elif sub == "logs":
+        return system_logs_cmd(svc)
+    elif sub == "enable":
+        if IS_WINDOWS:
+            return ps_command(f"Set-Service -Name {ps_quote(svc)} -StartupType Automatic")
+        if IS_MACOS:
+            return ["sudo", "launchctl", "load", "-w", f"/Library/LaunchDaemons/{svc}.plist"]
+        return ["systemctl", "enable", svc]
+    elif sub == "disable":
+        if IS_WINDOWS:
+            return ps_command(f"Set-Service -Name {ps_quote(svc)} -StartupType Disabled")
+        if IS_MACOS:
+            return ["sudo", "launchctl", "unload", "-w", f"/Library/LaunchDaemons/{svc}.plist"]
+        return ["systemctl", "disable", svc]
+    return []
+
+
+def firewall_cmd(arg: str) -> list[str]:
+    args = shlex.split(arg)
+    if not args:
+        return []
+    sub = args[0].lower()
+    rest = args[1:]
+    target = rest[0] if rest else ""
+    
+    if sub == "status":
+        if IS_WINDOWS:
+            return ps_command("Get-NetFirewallProfile | Select-Object Name, Enabled")
+        if IS_MACOS:
+            return ["sudo", "pfctl", "-s", "info"]
+        return ["ufw", "status"]
+    elif sub == "allow":
+        if not target:
+            return []
+        if IS_WINDOWS:
+            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Allow Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Allow")
+        if IS_MACOS:
+            return ["bash", "-c", f"echo 'pass in proto tcp from any to any port {target}' | sudo pfctl -f -"]
+        return ["ufw", "allow", target]
+    elif sub in ("block", "deny"):
+        if not target:
+            return []
+        if IS_WINDOWS:
+            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Block Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Block")
+        if IS_MACOS:
+            return ["bash", "-c", f"echo 'block in proto tcp from any to any port {target}' | sudo pfctl -f -"]
+        return ["ufw", "deny", target]
+    return []
+
+
+def disk_cmd(arg: str) -> list[str]:
+    args = shlex.split(arg)
+    if not args:
+        return []
+    sub = args[0].lower()
+    rest = args[1:]
+    target = rest[0] if rest else ""
+    
+    if sub == "list":
+        if IS_WINDOWS:
+            return ps_command("Get-Volume | Select-Object DriveLetter, FileSystemLabel, FileSystem, SizeRemaining, Size | Format-Table -AutoSize")
+        if IS_MACOS:
+            return ["diskutil", "list"]
+        return ["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT,MODEL"]
+    elif sub == "usage":
+        if IS_WINDOWS:
+            return ps_command("Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize")
+        return ["df", "-h"] + ([target] if target else [])
+    elif sub == "mount":
+        if len(rest) >= 2:
+            dev, mnt = rest[0], rest[1]
+            if IS_WINDOWS:
+                return ["mountvol", mnt, dev]
+            if IS_MACOS:
+                return ["diskutil", "mount", dev]
+            return ["mount", dev, mnt]
+        return []
+    elif sub == "unmount":
+        if not target:
+            return []
+        if IS_WINDOWS:
+            return ["mountvol", target, "/d"]
+        if IS_MACOS:
+            return ["diskutil", "unmount", target]
+        return ["umount", target]
+    elif sub == "check":
+        if not target:
+            return []
+        if IS_WINDOWS:
+            return ["chkdsk", target]
+        if IS_MACOS:
+            return ["fsck_apfs", target]
+        return ["fsck", "-y", target]
+    return []
+
+
+def archive_cmd(arg: str) -> list[str]:
+    return [sys.executable, "-m", "hopit.archive"] + (shlex.split(arg) if arg else [])
+
+
+def download_cmd(arg: str) -> list[str]:
+    return [sys.executable, "-m", "hopit.download"] + (shlex.split(arg) if arg else [])
+
+
+def search_cmd(arg: str) -> list[str]:
+    return [sys.executable, "-m", "hopit.search"] + (shlex.split(arg) if arg else [])
+
+
+def killport_cmd(arg: str) -> list[str]:
+    return [sys.executable, "-m", "hopit.killport"] + (shlex.split(arg) if arg else [])
+
+
 def build_commands(manager: str | None, names: dict) -> dict:
     """`names` is a dict of zero-arg/one-arg callables returning current candidate
     lists: {"service": ..., "installed_pkg": ..., "available_pkg": ...}"""
@@ -763,6 +891,65 @@ def build_commands(manager: str | None, names: dict) -> dict:
         "permissions": Command(
             run=permission_cmd,
             desc="Manage file and folder permissions: permissions [set|owner|group]",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "service": Command(
+            run=service_cmd,
+            desc="Manage system services: service [status|start|stop|restart|logs|enable|disable] <name>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["service"],
+            arg_completion_kind="service",
+        ),
+        "firewall": Command(
+            run=firewall_cmd,
+            desc="Manage network firewall rules: firewall [status|allow|block] <port>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "disk": Command(
+            run=disk_cmd,
+            desc="Manage storage disks and drives: disk [list|usage|mount|unmount|check]",
+            needs_arg=True,
+            mode="capture",
+        ),
+        "drive": Command(
+            run=disk_cmd,
+            desc="Manage storage disks and drives: drive [list|usage|mount|unmount|check]",
+            needs_arg=True,
+            mode="capture",
+        ),
+        "archive": Command(
+            run=archive_cmd,
+            desc="Create or extract compressed archives: archive [create|extract] [args]",
+            needs_arg=True,
+            mode="capture",
+        ),
+        "compress": Command(
+            run=archive_cmd,
+            desc="Create or extract compressed archives: compress [create|extract] [args]",
+            needs_arg=True,
+            mode="capture",
+        ),
+        "download": Command(
+            run=download_cmd,
+            desc="Download a file from a URL with progress: download <url> [destination]",
+            needs_arg=True,
+            mode="stream",
+        ),
+        "search": Command(
+            run=search_cmd,
+            desc="Search text inside files or search filenames: search <query> [path]",
+            needs_arg=True,
+            mode="capture",
+        ),
+        "killport": Command(
+            run=killport_cmd,
+            desc="Terminate any process listening on a specific port: killport <port>",
             needs_arg=True,
             needs_sudo=True,
             mode="stream",

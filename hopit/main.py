@@ -540,6 +540,85 @@ def show_context_help(words: list[str], commands: dict):
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return
 
+    # --- Structured universal commands ---
+    if resolved == "service":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]status[/green]", "Check service status")
+            table.add_row("[green]start[/green]", "Start a service")
+            table.add_row("[green]stop[/green]", "Stop a service")
+            table.add_row("[green]restart[/green]", "Restart a service")
+            table.add_row("[green]logs[/green]", "View recent service logs")
+            table.add_row("[green]enable[/green]", "Enable service auto-start on boot")
+            table.add_row("[green]disable[/green]", "Disable service auto-start on boot")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif len(rest) == 0:
+            console.print(Panel(f"[yellow]<service_name>[/yellow]  Specify the target service to {subcmd}", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "firewall":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]status[/green]", "Check firewall rules and profile status")
+            table.add_row("[green]allow <port>[/green]", "Allow incoming traffic on port")
+            table.add_row("[green]block <port>[/green]", "Block incoming traffic on port")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif subcmd in ("allow", "block") and len(rest) == 0:
+            console.print(Panel("[yellow]<port>[/yellow]  Specify the port number to allow/block", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved in ("disk", "drive"):
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]list[/green]", "List physical disks, drives, and volume partitions")
+            table.add_row("[green]usage [path][/green]", "Show disk space usage for path or system")
+            table.add_row("[green]mount <dev> <target>[/green]", "Mount a drive or partition")
+            table.add_row("[green]unmount <target>[/green]", "Unmount a mounted drive volume")
+            table.add_row("[green]check <target>[/green]", "Perform filesystem integrity check (fsck/chkdsk)")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("Specify required device or path arguments.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved in ("archive", "compress"):
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]create <out.zip> <path>[/green]", "Compress file/folder into archive")
+            table.add_row("[green]extract <archive> [dest][/green]", "Extract compressed archive into folder")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("Specify archive path and target directory.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "download":
+        if not subcmd:
+            console.print(Panel("[yellow]<url>[/yellow]  Specify the download URL (HTTP/HTTPS/FTP)", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow][destination][/yellow]  Specify optional destination file path or folder", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "search":
+        if not subcmd:
+            console.print(Panel("[yellow]<query_text>[/yellow]  Specify text or regex pattern to search for in files", title=title, border_style="cyan", expand=False))
+        elif len(words) == 2:
+            console.print(Panel("[yellow][path][/yellow]  Specify optional directory path to search inside", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "killport":
+        if not subcmd:
+            console.print(Panel("[yellow]<port_number>[/yellow]  Specify port number to terminate associated process", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
     show_command_help(resolved, commands)
 
 

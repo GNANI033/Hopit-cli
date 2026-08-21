@@ -271,6 +271,56 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 from hopit.loaders import load_path_entries
                 paths = load_path_entries(word)
                 return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+
+    elif cmd == "service":
+        if len(words) == 2:
+            svc_subs = {
+                "status": "Check service status",
+                "start": "Start a service",
+                "stop": "Stop a service",
+                "restart": "Restart a service",
+                "logs": "View recent service logs",
+                "enable": "Enable service auto-start on boot",
+                "disable": "Disable service auto-start on boot",
+            }
+            return [(k, v) for k, v in svc_subs.items()]
+        elif len(words) >= 3:
+            from hopit.loaders import load_service_names
+            svcs = load_service_names()
+            return [(s, "⚙️ service") for s in svcs]
+
+    elif cmd == "firewall":
+        if len(words) == 2:
+            fw_subs = {
+                "status": "Check firewall rule profiles and status",
+                "allow": "Allow inbound traffic on port",
+                "block": "Block inbound traffic on port",
+            }
+            return [(k, v) for k, v in fw_subs.items()]
+
+    elif cmd in ("disk", "drive"):
+        if len(words) == 2:
+            disk_subs = {
+                "list": "List physical drives and volumes",
+                "usage": "Check disk space utilization",
+                "mount": "Mount a drive or partition",
+                "unmount": "Unmount a mounted volume",
+                "check": "Perform filesystem integrity check",
+            }
+            return [(k, v) for k, v in disk_subs.items()]
+
+    elif cmd in ("archive", "compress"):
+        if len(words) == 2:
+            arch_subs = {
+                "create": "Create a compressed archive (.zip, .tar.gz)",
+                "extract": "Extract files from a compressed archive",
+            }
+            return [(k, v) for k, v in arch_subs.items()]
+        elif len(words) >= 3:
+            from hopit.loaders import load_path_entries
+            word = words[-1]
+            paths = load_path_entries(word)
+            return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
                 
     return []
 
@@ -278,7 +328,7 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
 class LazyCompleter(Completer):
     def __init__(self, commands: dict):
         self.commands = commands
-        self.all_names = [k for k in commands if k != "permissions"] + list(BUILTIN_DESCRIPTIONS.keys())
+        self.all_names = [k for k in commands if k not in ("permissions", "drive", "compress")] + list(BUILTIN_DESCRIPTIONS.keys())
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -286,12 +336,17 @@ class LazyCompleter(Completer):
         words = [w for w in words[:-1] if w] + [words[-1]]
         word = words[-1]
 
-        # Check if we are completing for git
+        # Check if we are completing for git or structured subcommands
         if len(words) > 1:
             head = words[0].lower()
             resolved, _ = resolve_command(self.all_names, head)
             if head == "permissions":
                 resolved = "permission"
+            elif head == "drive":
+                resolved = "disk"
+            elif head == "compress":
+                resolved = "archive"
+
             if resolved == "git":
                 git_candidates = get_git_completions(words)
                 word_lower = word.lower()
@@ -304,7 +359,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "permissions"):
+            elif resolved in ("user", "group", "permission", "permissions", "service", "firewall", "disk", "drive", "archive", "compress"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []
