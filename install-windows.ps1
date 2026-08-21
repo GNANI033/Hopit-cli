@@ -86,11 +86,26 @@ Write-Host ""
 Write-Step 3 "CascadiaCode Nerd Font (powerline arrows + icons)"
 
 $fontDir  = "$env:LOCALAPPDATA\Microsoft\Windows\Fonts"
-$fontFile = "$fontDir\CascadiaCodeNFM-Regular.ttf"
 $fontRegPath = "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts"
 $fontRegName = "CaskaydiaCove Nerd Font Mono Regular (TrueType)"
 
-if (Test-Path $fontFile) {
+$fontInstalled = $false
+if (Test-Path $fontRegPath) {
+    $reg = Get-ItemProperty -Path $fontRegPath -ErrorAction SilentlyContinue
+    if ($reg -and $reg.PSObject.Properties[$fontRegName]) {
+        $fontInstalled = $true
+    }
+}
+if (-not $fontInstalled) {
+    if (Test-Path $fontDir) {
+        $existing = Get-ChildItem $fontDir -Filter "*Caskaydia*Mono*.ttf" -ErrorAction SilentlyContinue
+        if ($existing) {
+            $fontInstalled = $true
+        }
+    }
+}
+
+if ($fontInstalled) {
     Write-Ok "Font already installed"
 } else {
     $fontUrl    = "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.3.0/CascadiaCode.zip"
@@ -108,11 +123,20 @@ if (Test-Path $fontFile) {
         Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
         Expand-Archive -Path $zipDest -DestinationPath $extractDir -Force
 
-        # Find the Regular weight TTF (avoid Bold/Italic)
-        $ttf = Get-ChildItem $extractDir -Filter "CascadiaCodeNFM-Regular.ttf" -Recurse |
+        # Find the Regular weight Mono TTF (avoid Bold/Italic/non-mono)
+        $ttf = Get-ChildItem $extractDir -Filter "*.ttf" -Recurse |
+               Where-Object { $_.Name -like "*CaskaydiaCove*Mono*-Regular.ttf" -or $_.Name -like "*Caskaydia*NFM*-Regular.ttf" -or $_.Name -like "*CaskaydiaCove*NFM-Regular.ttf" } |
                Select-Object -First 1
 
+        if (-not $ttf) {
+            $ttf = Get-ChildItem $extractDir -Filter "*Caskaydia*Mono*Regular*.ttf" -Recurse | Select-Object -First 1
+        }
+        if (-not $ttf) {
+            $ttf = Get-ChildItem $extractDir -Filter "*Caskaydia*Regular*.ttf" -Recurse | Select-Object -First 1
+        }
+
         if ($ttf) {
+            $fontFile = Join-Path $fontDir $ttf.Name
             New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
             Copy-Item $ttf.FullName $fontFile -Force
 
@@ -120,10 +144,16 @@ if (Test-Path $fontFile) {
             if (-not (Test-Path $fontRegPath)) {
                 New-Item -Path $fontRegPath -Force | Out-Null
             }
-            New-ItemProperty -Path $fontRegPath -Name $fontRegName `
+            
+            $regName = "CaskaydiaCove Nerd Font Regular (TrueType)"
+            if ($ttf.Name -like "*Mono*" -or $ttf.Name -like "*NFM*") {
+                $regName = "CaskaydiaCove Nerd Font Mono Regular (TrueType)"
+            }
+
+            New-ItemProperty -Path $fontRegPath -Name $regName `
                              -Value $fontFile -PropertyType String -Force | Out-Null
 
-            Write-Ok "Font installed (user-level, no admin required)"
+            Write-Ok "Font installed: $($ttf.Name) (user-level, no admin required)"
         } else {
             Write-Warn "TTF not found in archive -- font skipped"
             Write-Info "Arrows will show as boxes; everything else still works."
