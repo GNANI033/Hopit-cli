@@ -457,100 +457,7 @@ def system_disable_cmd(svc: str) -> list[str]:
 
 
 def firewall_cmd(arg: str) -> list[str]:
-    args = shlex.split(arg)
-    if not args:
-        return []
-    sub = args[0].lower()
-    rest = args[1:]
-    target = rest[0] if rest else ""
-    
-    if IS_WINDOWS:
-        if sub == "status":
-            return ps_command("Get-NetFirewallRule | Where-Object {$_.Enabled -eq $True -and $_.Direction -eq 'Inbound'} | Select-Object DisplayName, Action, LocalPort | Format-Table -AutoSize")
-        elif sub == "allow":
-            if not target:
-                return []
-            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Allow Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Allow")
-        elif sub in ("block", "deny"):
-            if not target:
-                return []
-            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Block Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Block")
-        return []
-
-    if IS_MACOS:
-        if sub == "status":
-            return ["sudo", "pfctl", "-sr"]
-        elif sub == "allow":
-            if not target:
-                return []
-            return ["bash", "-c", f"echo 'pass in proto tcp from any to any port {target}' | sudo pfctl -f -"]
-        elif sub in ("block", "deny"):
-            if not target:
-                return []
-            return ["bash", "-c", f"echo 'block in proto tcp from any to any port {target}' | sudo pfctl -f -"]
-        return []
-
-    # --- Linux Auto-Detection ---
-    # 1. firewalld (Fedora / RHEL / CentOS / AlmaLinux / Rocky / openSUSE)
-    if shutil.which("firewall-cmd"):
-        if sub == "status":
-            return ["firewall-cmd", "--list-all"]
-        elif sub == "allow":
-            if not target:
-                return []
-            return ["bash", "-c", f"firewall-cmd --add-port={target}/tcp --permanent && firewall-cmd --reload"]
-        elif sub in ("block", "deny"):
-            if not target:
-                return []
-            return ["bash", "-c", f"firewall-cmd --remove-port={target}/tcp --permanent 2>/dev/null; firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{target}\" protocol=\"tcp\" drop' --permanent && firewall-cmd --reload"]
-
-    # 2. ufw (Ubuntu / Debian / Mint)
-    if shutil.which("ufw"):
-        if sub == "status":
-            return ["ufw", "status", "verbose"]
-        elif sub == "allow":
-            if not target:
-                return []
-            return ["ufw", "allow", target]
-        elif sub in ("block", "deny"):
-            if not target:
-                return []
-            return ["ufw", "deny", target]
-
-    # 3. nftables (nft)
-    if shutil.which("nft"):
-        if sub == "status":
-            return ["nft", "list", "ruleset"]
-        elif sub == "allow":
-            if not target:
-                return []
-            return ["nft", "add", "rule", "inet", "filter", "input", "tcp", "dport", target, "accept"]
-        elif sub in ("block", "deny"):
-            if not target:
-                return []
-            return ["nft", "add", "rule", "inet", "filter", "input", "tcp", "dport", target, "drop"]
-
-    # 4. iptables (legacy Linux)
-    if shutil.which("iptables"):
-        if sub == "status":
-            return ["iptables", "-L", "-n", "-v"]
-        elif sub == "allow":
-            if not target:
-                return []
-            return ["iptables", "-A", "INPUT", "-p", "tcp", "--dport", target, "-j", "ACCEPT"]
-        elif sub in ("block", "deny"):
-            if not target:
-                return []
-            return ["iptables", "-A", "INPUT", "-p", "tcp", "--dport", target, "-j", "DROP"]
-
-    # Fallback to ufw
-    if sub == "status":
-        return ["ufw", "status", "verbose"]
-    elif sub == "allow":
-        return ["ufw", "allow", target] if target else []
-    elif sub in ("block", "deny"):
-        return ["ufw", "deny", target] if target else []
-    return []
+    return [sys.executable, "-m", "hopit.firewall"] + (shlex.split(arg) if arg else [])
 
 
 def disk_cmd(arg: str) -> list[str]:
@@ -964,8 +871,8 @@ def build_commands(manager: str | None, names: dict) -> dict:
         ),
         "firewall": Command(
             run=firewall_cmd,
-            desc="Manage network firewall rules: firewall [status|allow|block] <port>",
-            needs_arg=True,
+            desc="Manage network firewall rules & active status (interactive or single-line)",
+            needs_arg=False,
             needs_sudo=True,
             mode="stream",
         ),
