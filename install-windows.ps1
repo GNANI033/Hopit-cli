@@ -1,5 +1,5 @@
 # ============================================================================
-#  install-windows.ps1  —  Full automated lazyctl setup for Windows
+#  install-windows.ps1  --  Full automated lazyctl setup for Windows
 #  Run via:  install-windows.bat   (or directly in PowerShell)
 #
 #  What this does, automatically:
@@ -14,7 +14,7 @@
 $ErrorActionPreference = "Continue"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+# -- Helpers -----------------------------------------------------------------
 function Write-Step  { param($n, $msg) Write-Host "  [$n/6] $msg" -ForegroundColor Cyan }
 function Write-Ok    { param($msg)     Write-Host "   [OK] $msg"   -ForegroundColor Green }
 function Write-Warn  { param($msg)     Write-Host " [WARN] $msg"   -ForegroundColor Yellow }
@@ -36,7 +36,7 @@ Write-Host "   lazyctl  -  Windows Automated Setup"        -ForegroundColor Mage
 Write-Host "  ============================================" -ForegroundColor Magenta
 Write-Host ""
 
-# ── 1. Python ────────────────────────────────────────────────────────────────
+# -- 1. Python ----------------------------------------------------------------
 Write-Step 1 "Python 3.10+"
 
 $py = Get-Command python -ErrorAction SilentlyContinue
@@ -47,7 +47,7 @@ if ($py) {
         Write-Ok "Python $ver already installed"
         $needPython = $false
     } else {
-        Write-Warn "Python $ver found but 3.10+ required — upgrading"
+        Write-Warn "Python $ver found but 3.10+ required -- upgrading"
     }
 }
 
@@ -65,7 +65,7 @@ if ($needPython) {
     }
 }
 
-# ── 2. Windows Terminal ───────────────────────────────────────────────────────
+# -- 2. Windows Terminal -------------------------------------------------------
 Write-Host ""
 Write-Step 2 "Windows Terminal"
 
@@ -81,7 +81,7 @@ if ($wtInstalled) {
     Write-Ok "Windows Terminal installed"
 }
 
-# ── 3. CascadiaCode Nerd Font ─────────────────────────────────────────────────
+# -- 3. CascadiaCode Nerd Font -------------------------------------------------
 Write-Host ""
 Write-Step 3 "CascadiaCode Nerd Font (powerline arrows + icons)"
 
@@ -125,12 +125,12 @@ if (Test-Path $fontFile) {
 
             Write-Ok "Font installed (user-level, no admin required)"
         } else {
-            Write-Warn "TTF not found in archive — font skipped"
+            Write-Warn "TTF not found in archive -- font skipped"
             Write-Info "Arrows will show as boxes; everything else still works."
         }
     } catch {
         Write-Warn "Font download failed: $_"
-        Write-Info "Colors still work perfectly — only the arrow separators will be plain '>'."
+        Write-Info "Colors still work perfectly -- only the arrow separators will be plain '>'."
         Write-Info "Manual install later: https://github.com/ryanoasis/nerd-fonts/releases"
     } finally {
         Remove-Item $zipDest    -ErrorAction SilentlyContinue
@@ -138,7 +138,7 @@ if (Test-Path $fontFile) {
     }
 }
 
-# ── 4. Configure Windows Terminal to use the font ────────────────────────────
+# -- 4. Configure Windows Terminal to use the font ----------------------------
 Write-Host ""
 Write-Step 4 "Configuring Windows Terminal font"
 
@@ -185,10 +185,10 @@ foreach ($settingsPath in $wtSettingsCandidates) {
 if (-not $fontSet) {
     Write-Warn "Windows Terminal settings not found yet."
     Write-Info "Launch Windows Terminal once, close it, then re-run this script to set the font."
-    Write-Info "(Everything else is already set up — this is just the font step.)"
+    Write-Info "(Everything else is already set up -- this is just the font step.)"
 }
 
-# ── 5. pip install Python packages ────────────────────────────────────────────
+# -- 5. pip install Python packages --------------------------------------------
 Write-Host ""
 Write-Step 5 "Installing Python packages (prompt_toolkit, rich, colorama)"
 
@@ -198,12 +198,12 @@ python -m pip install -r "$ScriptDir\requirements.txt" --quiet
 if ($LASTEXITCODE -eq 0) {
     Write-Ok "Packages installed"
 } else {
-    Write-Err "pip install failed — check your internet connection"
+    Write-Err "pip install failed -- check your internet connection"
     Read-Host "Press Enter to exit"
     exit 1
 }
 
-# ── 6. Create launcher + add to user PATH ─────────────────────────────────────
+# -- 6. Create launcher + add to user PATH ------------------------------------
 Write-Host ""
 Write-Step 6 "Creating lazyctl launcher"
 
@@ -221,7 +221,7 @@ if ($userPath -notlike "*$lazyctlDir*") {
     Write-Ok "Already in PATH"
 }
 
-# ── Done ─────────────────────────────────────────────────────────────────────
+# -- Done ---------------------------------------------------------------------
 Write-Host ""
 Write-Host "  ============================================" -ForegroundColor Green
 Write-Host "   All done!  Open Windows Terminal and run:" -ForegroundColor Green
