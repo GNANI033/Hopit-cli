@@ -162,17 +162,23 @@ def get_git_completions(words: list[str]) -> list[tuple[str, str]]:
                 candidates.append((p, desc))
         return candidates
 
-    elif subcmd in ("branch", "merge", "rebase"):
+    elif subcmd in ("branch", "merge", "rebase", "push", "pull"):
         return [(b, "🌿 branch") for b in branches]
 
-    # Fallback to standard path completions
-    from hopit.loaders import load_path_entries
-    paths = load_path_entries(word)
-    candidates = []
-    for p in paths:
-        desc = "📁 folder" if os.path.isdir(p) else "📄 file"
-        candidates.append((p, desc))
-    return candidates
+    elif subcmd == "diff":
+        candidates = []
+        for fn, desc in changed_files.items():
+            candidates.append((fn, desc))
+        from hopit.loaders import load_path_entries
+        paths = load_path_entries(word)
+        existing = {c[0] for c in candidates}
+        for p in paths:
+            if p not in existing:
+                desc = "📁 folder" if os.path.isdir(p) else "📄 file"
+                candidates.append((p, desc))
+        return candidates
+
+    return []
 
 
 class LazyCompleter(Completer):
