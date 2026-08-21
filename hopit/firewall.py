@@ -4,13 +4,27 @@ import shutil
 import shlex
 import os
 import re
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.prompt import Prompt, Confirm
-from hopit.config import IS_WINDOWS, IS_MACOS
 
-console = Console()
+import glob
+
+# Safely add top-level site-packages directories to sys.path (needed when running under sudo)
+for pattern in ["~/.local/lib/python*/site-packages", "/home/*/.local/lib/python*/site-packages", "/usr/local/lib/python*/site-packages"]:
+    for site_pkg in glob.glob(os.path.expanduser(pattern)):
+        if os.path.isdir(site_pkg) and site_pkg not in sys.path:
+            sys.path.insert(0, site_pkg)
+
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.prompt import Prompt, Confirm
+    HAS_RICH = True
+    console = Console()
+except ImportError:
+    HAS_RICH = False
+    console = None
+
+from hopit.config import IS_WINDOWS, IS_MACOS
 
 def get_network_interfaces() -> list[str]:
     """Auto-detect active network interfaces on the host system."""
@@ -54,14 +68,8 @@ def get_network_interfaces() -> list[str]:
 
 
 def show_firewall_status_table():
-    """Parses system firewall status and displays a sleek Rich Table."""
-    table = Table(title="🛡️ Active Firewall Configuration & Rules", border_style="cyan", header_style="bold green")
-    table.add_column("Rule / Service", style="bold white")
-    table.add_column("Port", style="bright_yellow")
-    table.add_column("Protocol", style="bright_cyan")
-    table.add_column("Action", style="bold")
-    table.add_column("Interface / Scope", style="magenta")
-    table.add_column("Backend / Details", style="dim white")
+    """Parses system firewall status and displays a formatted Table."""
+    rows = []
 
     if IS_WINDOWS:
         try:
@@ -74,11 +82,11 @@ def show_firewall_status_table():
                     continue
                 parts = line.split()
                 name = parts[0] if parts else "Inbound Rule"
-                action = "[bold green]ALLOW[/bold green]" if "Allow" in line else "[bold red]BLOCK[/bold red]"
+                action = "ALLOW" if "Allow" in line else "BLOCK"
                 port = parts[-1] if len(parts) > 1 and parts[-1].isdigit() else "Any"
-                table.add_row(name, port, "TCP/UDP", action, "Inbound", "Windows Firewall")
+                rows.append((name, port, "TCP/UDP", action, "Inbound", "Windows Firewall"))
         except Exception as e:
-            console.print(f"[red]Error reading Windows Firewall rules: {e}[/red]")
+            print(f"Error reading Windows Firewall rules: {e}")
             return
     elif IS_MACOS:
         try:
@@ -87,12 +95,12 @@ def show_firewall_status_table():
                 line = line.strip()
                 if not line:
                     continue
-                action = "[bold green]ALLOW[/bold green]" if line.startswith("pass") else "[bold red]BLOCK[/bold red]"
+                action = "ALLOW" if line.startswith("pass") else "BLOCK"
                 port_match = re.search(r"port\s+(\d+|\w+)", line)
                 port = port_match.group(1) if port_match else "Any"
-                table.add_row("PF Rule", port, "TCP", action, "All", "macOS pfctl")
+                rows.append(("PF Rule", port, "TCP", action, "All", "macOS pfctl"))
         except Exception:
-            table.add_row("macOS PF", "Any", "ANY", "[yellow]ACTIVE[/yellow]", "All", "pfctl")
+            rows.append(("macOS PF", "Any", "ANY", "ACTIVE", "All", "pfctl"))
     else:
         # Linux
         if shutil.which("firewall-cmd"):
@@ -112,22 +120,22 @@ def show_firewall_status_table():
             rich_match = re.findall(r"rule family=.*?drop|rule family=.*?accept|rule family=.*?reject", res.stdout)
             
             for s in services:
-                table.add_row(f"Service: {s}", "Default", "TCP/UDP", "[bold green]ALLOW[/bold green]", ifaces, f"firewalld ({active_zone})")
+                rows.append((f"Service: {s}", "Default", "TCP/UDP", "ALLOW", ifaces, f"firewalld ({active_zone})"))
             
             for p in ports:
                 parts = p.split("/")
                 p_num = parts[0]
                 p_proto = parts[1].upper() if len(parts) > 1 else "TCP"
-                table.add_row("Allowed Port", p_num, p_proto, "[bold green]ALLOW[/bold green]", ifaces, f"firewalld ({active_zone})")
+                rows.append(("Allowed Port", p_num, p_proto, "ALLOW", ifaces, f"firewalld ({active_zone})"))
             
             for r in rich_match:
                 p_match = re.search(r'port="(\d+)"', r)
                 p_val = p_match.group(1) if p_match else "Any"
-                act = "[bold red]BLOCK[/bold red]" if "drop" in r or "reject" in r else "[bold green]ALLOW[/bold green]"
-                table.add_row("Rich Rule", p_val, "TCP", act, ifaces, f"firewalld ({active_zone})")
+                act = "BLOCK" if "drop" in r or "reject" in r else "ALLOW"
+                rows.append(("Rich Rule", p_val, "TCP", act, ifaces, f"firewalld ({active_zone})"))
                 
             if not services and not ports and not rich_match:
-                table.add_row(f"Zone: {active_zone}", "Default", "ANY", "[bold green]ACTIVE[/bold green]", ifaces, "firewalld")
+                rows.append((f"Zone: {active_zone}", "Default", "ANY", "ACTIVE", ifaces, "firewalld"))
 
         elif shutil.which("ufw"):
             res = subprocess.run(["ufw", "status", "verbose"], capture_output=True, text=True)
@@ -136,32 +144,53 @@ def show_firewall_status_table():
                     parts = line.split()
                     if len(parts) >= 2:
                         port = parts[0]
-                        act = "[bold green]ALLOW[/bold green]" if "ALLOW" in parts[1] else "[bold red]BLOCK[/bold red]"
+                        act = "ALLOW" if "ALLOW" in parts[1] else "BLOCK"
                         src = parts[2] if len(parts) > 2 else "Anywhere"
-                        table.add_row("UFW Rule", port, "TCP/UDP", act, src, "UFW")
-            if table.row_count == 0:
-                table.add_row("UFW Firewall", "All Ports", "ANY", "[bold green]ACTIVE[/bold green]", "Anywhere", "ufw")
+                        rows.append(("UFW Rule", port, "TCP/UDP", act, src, "UFW"))
+            if not rows:
+                rows.append(("UFW Firewall", "All Ports", "ANY", "ACTIVE", "Anywhere", "ufw"))
 
         elif shutil.which("nft"):
             res = subprocess.run(["nft", "list", "ruleset"], capture_output=True, text=True)
             for line in res.stdout.splitlines():
                 line = line.strip()
                 if "dport" in line:
-                    act = "[bold green]ALLOW[/bold green]" if "accept" in line else "[bold red]BLOCK[/bold red]"
+                    act = "ALLOW" if "accept" in line else "BLOCK"
                     port_match = re.search(r"dport\s+(\d+)", line)
                     port = port_match.group(1) if port_match else "Any"
-                    table.add_row("NFT Rule", port, "TCP", act, "All", "nftables")
+                    rows.append(("NFT Rule", port, "TCP", act, "All", "nftables"))
 
         elif shutil.which("iptables"):
             res = subprocess.run(["iptables", "-L", "INPUT", "-n", "-v"], capture_output=True, text=True)
             for line in res.stdout.splitlines():
                 if "dpt:" in line:
-                    act = "[bold green]ALLOW[/bold green]" if "ACCEPT" in line else "[bold red]BLOCK[/bold red]"
+                    act = "ALLOW" if "ACCEPT" in line else "BLOCK"
                     port_match = re.search(r"dpt:(\d+)", line)
                     port = port_match.group(1) if port_match else "Any"
-                    table.add_row("IPTables Rule", port, "TCP", act, "All", "iptables")
+                    rows.append(("IPTables Rule", port, "TCP", act, "All", "iptables"))
 
-    console.print(table)
+    if HAS_RICH and console:
+        table = Table(title="🛡️ Active Firewall Configuration & Rules", border_style="cyan", header_style="bold green")
+        table.add_column("Rule / Service", style="bold white")
+        table.add_column("Port", style="bright_yellow")
+        table.add_column("Protocol", style="bright_cyan")
+        table.add_column("Action", style="bold")
+        table.add_column("Interface / Scope", style="magenta")
+        table.add_column("Backend / Details", style="dim white")
+
+        for rule, port, proto, act, iface, detail in rows:
+            act_styled = f"[bold green]{act}[/bold green]" if act == "ALLOW" else (f"[bold red]{act}[/bold red]" if act in ("BLOCK", "DENY") else f"[yellow]{act}[/yellow]")
+            table.add_row(rule, port, proto, act_styled, iface, detail)
+        console.print(table)
+    else:
+        # Standard ASCII Table Fallback
+        print("\n--- 🛡️ Active Firewall Configuration & Rules ---")
+        fmt = "{:<24} {:<12} {:<10} {:<10} {:<18} {:<20}"
+        print(fmt.format("Rule / Service", "Port", "Protocol", "Action", "Interface / Scope", "Backend / Details"))
+        print("-" * 96)
+        for rule, port, proto, act, iface, detail in rows:
+            print(fmt.format(rule, port, proto, act, iface, detail))
+        print("-" * 96 + "\n")
 
 
 def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "all") -> bool:
@@ -204,28 +233,58 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
     return False
 
 
+def prompt_ask(prompt_text: str, default: str = "", choices: list[str] | None = None) -> str:
+    """Safely prompt user with rich or built-in input fallback."""
+    if HAS_RICH:
+        return Prompt.ask(prompt_text, default=default, choices=choices) if choices else Prompt.ask(prompt_text, default=default)
+    else:
+        ch_str = f" ({'/'.join(choices)})" if choices else ""
+        def_str = f" [{default}]" if default else ""
+        res = input(f"{prompt_text}{ch_str}{def_str}: ").strip()
+        return res if res else default
+
+
+def prompt_confirm(prompt_text: str, default: bool = True) -> bool:
+    """Safely prompt boolean confirmation with rich or built-in input fallback."""
+    if HAS_RICH:
+        return Confirm.ask(prompt_text, default=default)
+    else:
+        def_str = "[Y/n]" if default else "[y/N]"
+        res = input(f"{prompt_text} {def_str}: ").strip().lower()
+        if not res:
+            return default
+        return res in ("y", "yes")
+
+
 def interactive_firewall_setup():
     """Launches an interactive setup wizard for network firewall management."""
-    console.print(Panel("[bold green]Hopit Interactive Firewall Setup Wizard[/bold green]\nConfigure ports, protocols, and network interfaces interactively.", border_style="cyan"))
-    
-    action = Prompt.ask("Choose action", choices=["allow", "block", "status"], default="allow")
+    if HAS_RICH and console:
+        console.print(Panel("[bold green]Hopit Interactive Firewall Setup Wizard[/bold green]\nConfigure ports, protocols, and network interfaces interactively.", border_style="cyan"))
+    else:
+        print("\n--- Hopit Interactive Firewall Setup Wizard ---")
+
+    action = prompt_ask("Choose action", choices=["allow", "block", "status"], default="allow")
     if action == "status":
         show_firewall_status_table()
         return
 
-    port = Prompt.ask("Enter port number or range (e.g. 80, 443, 8080)")
+    port = prompt_ask("Enter port number or range (e.g. 80, 443, 8080)")
     if not port:
-        console.print("[yellow]Port number is required.[/yellow]")
+        print("Port number is required.")
         return
         
-    proto = Prompt.ask("Select protocol", choices=["tcp", "udp", "both"], default="tcp")
+    proto = prompt_ask("Select protocol", choices=["tcp", "udp", "both"], default="tcp")
     
     ifaces = get_network_interfaces()
-    console.print(f"[cyan]Detected Network Interfaces:[/cyan] {', '.join(ifaces)}")
-    iface = Prompt.ask("Select adapter / interface (or 'all')", default="all")
+    if HAS_RICH and console:
+        console.print(f"[cyan]Detected Network Interfaces:[/cyan] {', '.join(ifaces)}")
+    else:
+        print(f"Detected Network Interfaces: {', '.join(ifaces)}")
+
+    iface = prompt_ask("Select adapter / interface (or 'all')", default="all")
     
-    console.print(f"\n[bold yellow]Rule Summary:[/bold yellow] {action.upper()} port [bold cyan]{port}[/bold cyan] ({proto.upper()}) on adapter [magenta]{iface}[/magenta]")
-    if Confirm.ask("Apply this firewall rule now?", default=True):
+    print(f"\nRule Summary: {action.upper()} port {port} ({proto.upper()}) on adapter {iface}")
+    if prompt_confirm("Apply this firewall rule now?", default=True):
         if proto == "both":
             r1 = run_firewall_rule(action, port, "tcp", iface)
             r2 = run_firewall_rule(action, port, "udp", iface)
@@ -234,10 +293,10 @@ def interactive_firewall_setup():
             success = run_firewall_rule(action, port, proto, iface)
             
         if success:
-            console.print("[bold green]✓ Firewall rule applied successfully![/bold green]")
+            print("✓ Firewall rule applied successfully!")
             show_firewall_status_table()
         else:
-            console.print("[bold red]✗ Failed to apply firewall rule. Ensure root/sudo privileges.[/bold red]")
+            print("✗ Failed to apply firewall rule. Ensure root/sudo privileges.")
 
 
 def handle_firewall_cli(args: list[str]):
@@ -248,7 +307,7 @@ def handle_firewall_cli(args: list[str]):
 
     sub = args[0].lower()
     
-    if sub == "status":
+    if sub.startswith("st"):  # matches status, st, stat
         show_firewall_status_table()
         return
 
@@ -271,13 +330,13 @@ def handle_firewall_cli(args: list[str]):
             success = run_firewall_rule(act_name, port, proto, iface)
             
         if success:
-            console.print(f"[bold green]✓ Successfully applied {act_name.upper()} rule for port {port} ({proto.upper()})![/bold green]")
+            print(f"✓ Successfully applied {act_name.upper()} rule for port {port} ({proto.upper()})!")
             show_firewall_status_table()
         else:
-            console.print("[bold red]✗ Failed to apply firewall rule. Ensure root/sudo privileges.[/bold red]")
+            print("✗ Failed to apply firewall rule. Ensure root/sudo privileges.")
         return
 
-    console.print(f"[yellow]Unknown firewall action: {sub}. Usage: firewall [status|allow|block|interactive][/yellow]")
+    print(f"Unknown firewall action: {sub}. Usage: firewall [status|allow|block|interactive]")
 
 
 def main():
