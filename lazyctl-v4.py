@@ -56,8 +56,33 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
-console = Console()
 IS_WINDOWS = os.name == "nt"
+
+# Windows Terminal sets WT_SESSION; plain cmd.exe / PowerShell ISE do not.
+# This controls whether we can use truecolor ANSI and Nerd Font glyphs.
+IS_WINDOWS_TERMINAL = IS_WINDOWS and bool(os.environ.get("WT_SESSION"))
+
+if IS_WINDOWS:
+    # colorama translates ANSI escape codes to Win32 calls for plain cmd.exe.
+    # In Windows Terminal it's a no-op (VT processing is built-in), but
+    # initializing it is always safe.
+    try:
+        import colorama
+        colorama.init()
+    except ImportError:
+        pass  # optional; install via requirements.txt
+
+    if IS_WINDOWS_TERMINAL:
+        # Tell prompt_toolkit to emit 24-bit color sequences.
+        os.environ.setdefault("PROMPT_TOOLKIT_COLOR_DEPTH", "DEPTH_24_BIT")
+
+# Build the Rich Console with the right color profile.
+if IS_WINDOWS_TERMINAL:
+    # Force truecolor Rich output inside Windows Terminal.
+    console = Console(color_system="truecolor", force_terminal=True)
+else:
+    # Let Rich auto-detect (works on Linux; degrades gracefully on plain cmd).
+    console = Console()
 
 
 # --------------------------------------------------------------------------
@@ -1229,8 +1254,14 @@ def main():
             now = datetime.now().strftime("%H:%M")
             branch = get_git_branch()
             
-            sep = "\ue0b0"
-            
+            # Powerline arrow glyph and git icon need a Nerd Font.
+            # Linux/Windows Terminal: use powerline glyphs.
+            # Plain cmd.exe: fall back to plain > so the prompt still
+            # looks structured even without a special font installed.
+            use_powerline = (not IS_WINDOWS) or IS_WINDOWS_TERMINAL
+            sep      = "\ue0b0" if use_powerline else ">"
+            git_icon = " " if use_powerline else ""
+
             prompt_fragments = [
                 ("class:lazyctl", " lazyctl "),
                 ("class:lazyctl_sep", sep),
@@ -1238,16 +1269,16 @@ def main():
                 ("class:user_sep", sep),
                 ("class:cwd", f" {display_cwd} "),
             ]
-            
+
             if branch:
                 prompt_fragments.extend([
                     ("class:cwd_sep_git", sep),
-                    ("class:git", f"  {branch} "),
+                    ("class:git", f" {git_icon}{branch} "),
                     ("class:git_sep", sep),
                 ])
             else:
                 prompt_fragments.append(("class:cwd_sep", sep))
-                
+
             prompt_fragments.extend([
                 ("class:time", f" {now} "),
                 ("class:time_sep", sep),

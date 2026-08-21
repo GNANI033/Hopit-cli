@@ -22,7 +22,7 @@ echo  [OK] Python %PYVER% detected.
 
 :: ── 2. Install dependencies ────────────────────────────────────────────────
 echo.
-echo  Installing required packages (prompt_toolkit, rich)...
+echo  Installing required packages (prompt_toolkit, rich, colorama)...
 python -m pip install --upgrade pip --quiet
 python -m pip install -r "%~dp0requirements.txt" --quiet
 if errorlevel 1 (
@@ -61,6 +61,30 @@ if /i "!ADD_PATH!"=="Y" (
     echo         python "%SCRIPT_PATH%"
 )
 
+:: ── 5. Color / font setup guidance ────────────────────────────────────────
+echo.
+echo  ============================================
+echo   COLOR SETUP (for full Linux-like look)
+echo  ============================================
+echo.
+echo  lazyctl auto-detects Windows Terminal and enables truecolor.
+echo  For the full colorful powerline prompt (arrows, git icon):
+echo.
+echo  1. Install Windows Terminal (if not already):
+echo     Open Microsoft Store and search "Windows Terminal"
+echo     OR: winget install Microsoft.WindowsTerminal
+echo.
+echo  2. Install a Nerd Font (for powerline arrows):
+echo     Recommended: CascadiaCode Nerd Font (free)
+echo     Download: https://github.com/ryanoasis/nerd-fonts/releases
+echo     Look for: CascadiaCode.zip  -> install CascadiaCodeNFM-Regular.ttf
+echo.
+echo  3. Set the font in Windows Terminal:
+echo     Settings (Ctrl+,) -> Your profile -> Appearance
+echo     -> Font face -> "CaskaydiaCove Nerd Font Mono"
+echo.
+echo  Without the font, lazyctl still works with full color but uses
+echo  plain > arrows instead of the fancy powerline style.
 echo.
 echo  ============================================
 echo   Setup complete!  Run: lazyctl
