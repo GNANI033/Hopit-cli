@@ -278,9 +278,7 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 "status": "Check active firewall rule profiles and status",
                 "allow": "Allow inbound traffic on port",
                 "block": "Block inbound traffic on port",
-                "deny": "Block inbound traffic on port",
                 "delete": "Delete a specific firewall rule by ID or port",
-                "remove": "Delete a specific firewall rule by ID or port",
             }
             return [(k, v) for k, v in fw_subs.items()]
 
