@@ -270,6 +270,114 @@ fi
     ]
 
 
+def chmod_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_chmod_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_chmod_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    return ["chmod"] + args
+
+
+def chown_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_chown_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_chown_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    return ["chown"] + args
+
+
+def chgrp_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_chgrp_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_chgrp_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    return ["chgrp"] + args
+
+
+def useradd_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_useradd_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_useradd_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    if IS_MACOS:
+        username = next((a for a in args if not a.startswith('-')), "")
+        if not username:
+            return []
+        password = ""
+        if len(args) >= 2 and args[1] != username and not args[1].startswith('-'):
+            password = args[1]
+        pw_part = ["-password", password] if password else []
+        return ["sysadminctl", "-addUser", username] + pw_part
+    return ["useradd"] + args
+
+
+def userdel_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_userdel_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_userdel_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    if IS_MACOS:
+        username = next((a for a in args if not a.startswith('-')), "")
+        if not username:
+            return []
+        return ["sysadminctl", "-deleteUser", username]
+    return ["userdel"] + args
+
+
+def usermod_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_usermod_to_windows, translate_usermod_to_mac
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_usermod_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    if IS_MACOS:
+        mac_cmd = translate_usermod_to_mac(args)
+        return shlex.split(mac_cmd) if mac_cmd else []
+    return ["usermod"] + args
+
+
+def passwd_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_passwd_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_passwd_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    return ["passwd"] + args
+
+
+def groupadd_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_groupadd_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_groupadd_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    if IS_MACOS:
+        group = next((a for a in args if not a.startswith('-')), "")
+        if not group:
+            return []
+        return ["dseditgroup", "-o", "create", group]
+    return ["groupadd"] + args
+
+
+def groupdel_cmd(arg: str) -> list[str]:
+    from hopit.translation import translate_groupdel_to_windows
+    args = shlex.split(arg)
+    if IS_WINDOWS:
+        win_cmd = translate_groupdel_to_windows(args)
+        return shlex.split(win_cmd) if win_cmd else []
+    if IS_MACOS:
+        group = next((a for a in args if not a.startswith('-')), "")
+        if not group:
+            return []
+        return ["dseditgroup", "-o", "delete", group]
+    return ["groupdel"] + args
+
+
 def build_commands(manager: str | None, names: dict) -> dict:
     """`names` is a dict of zero-arg/one-arg callables returning current candidate
     lists: {"service": ..., "installed_pkg": ..., "available_pkg": ...}"""
@@ -462,6 +570,112 @@ def build_commands(manager: str | None, names: dict) -> dict:
             desc="Stage all changes, commit, and push in one shot: gitsave <commit message>",
             needs_arg=True,
             mode="capture",
+        ),
+        "chmod": Command(
+            run=chmod_cmd,
+            desc="Change file/folder permissions cross-platform: chmod <perms> <path>",
+            needs_arg=True,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "chown": Command(
+            run=chown_cmd,
+            desc="Change file/folder ownership cross-platform: chown <owner> <path>",
+            needs_arg=True,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "chgrp": Command(
+            run=chgrp_cmd,
+            desc="Change file/folder group ownership cross-platform: chgrp <group> <path>",
+            needs_arg=True,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "useradd": Command(
+            run=useradd_cmd,
+            desc="Add a new system user cross-platform: useradd <username> [password]",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "adduser": Command(
+            run=useradd_cmd,
+            desc="Add a new system user cross-platform: adduser <username> [password]",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "userdel": Command(
+            run=userdel_cmd,
+            desc="Remove a system user cross-platform: userdel <username>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["user"],
+            arg_completion_kind="user",
+        ),
+        "deluser": Command(
+            run=userdel_cmd,
+            desc="Remove a system user cross-platform: deluser <username>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["user"],
+            arg_completion_kind="user",
+        ),
+        "usermod": Command(
+            run=usermod_cmd,
+            desc="Modify a system user (e.g. add to groups): usermod -aG <group> <username>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["user"],
+            arg_completion_kind="user",
+        ),
+        "passwd": Command(
+            run=passwd_cmd,
+            desc="Change a user's password cross-platform: passwd <username>",
+            needs_arg=False,
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["user"],
+            arg_completion_kind="user",
+        ),
+        "groupadd": Command(
+            run=groupadd_cmd,
+            desc="Add a new system group cross-platform: groupadd <groupname>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "addgroup": Command(
+            run=groupadd_cmd,
+            desc="Add a new system group cross-platform: addgroup <groupname>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+        ),
+        "groupdel": Command(
+            run=groupdel_cmd,
+            desc="Remove a system group cross-platform: groupdel <groupname>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["group"],
+            arg_completion_kind="group",
+        ),
+        "delgroup": Command(
+            run=groupdel_cmd,
+            desc="Remove a system group cross-platform: delgroup <groupname>",
+            needs_arg=True,
+            needs_sudo=True,
+            mode="stream",
+            arg_completions=names["group"],
+            arg_completion_kind="group",
         ),
     }
 

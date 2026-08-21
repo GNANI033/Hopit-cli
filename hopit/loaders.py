@@ -320,6 +320,83 @@ def load_adapters() -> list[str]:
         return []
 
 
+def load_users() -> list[str]:
+    """List local user accounts on the system."""
+    if IS_WINDOWS:
+        lines = _run_lines(
+            ["powershell", "-NoProfile", "-Command", "Get-LocalUser | Select-Object -ExpandProperty Name"],
+            timeout=5,
+        )
+        if not lines:
+            raw_lines = _run_lines(["net", "user"], timeout=5)
+            started = False
+            for line in raw_lines:
+                if "-------------------" in line:
+                    started = True
+                    continue
+                if started:
+                    if "The command completed successfully" in line:
+                        break
+                    for part in line.split():
+                        if part.strip():
+                            lines.append(part.strip())
+        return sorted(set(l.strip() for l in lines if l.strip()))
+        
+    if IS_MACOS:
+        lines = _run_lines(["dscl", ".", "list", "/Users"], timeout=5)
+        return sorted(set(l.strip() for l in lines if l.strip() and not l.strip().startswith("_")))
+
+    try:
+        users = []
+        with open("/etc/passwd", "r") as f:
+            for line in f:
+                parts = line.split(":")
+                if parts and parts[0].strip():
+                    users.append(parts[0].strip())
+        return sorted(users)
+    except OSError:
+        return []
+
+
+def load_groups() -> list[str]:
+    """List local groups on the system."""
+    if IS_WINDOWS:
+        lines = _run_lines(
+            ["powershell", "-NoProfile", "-Command", "Get-LocalGroup | Select-Object -ExpandProperty Name"],
+            timeout=5,
+        )
+        if not lines:
+            raw_lines = _run_lines(["net", "localgroup"], timeout=5)
+            started = False
+            for line in raw_lines:
+                if "-------------------" in line:
+                    started = True
+                    continue
+                if started:
+                    if "The command completed successfully" in line:
+                        break
+                    if line.startswith("*"):
+                        lines.append(line.lstrip("*").strip())
+                    elif line.strip():
+                        lines.append(line.strip())
+        return sorted(set(l.strip() for l in lines if l.strip()))
+
+    if IS_MACOS:
+        lines = _run_lines(["dscl", ".", "list", "/Groups"], timeout=5)
+        return sorted(set(l.strip() for l in lines if l.strip() and not l.strip().startswith("_")))
+
+    try:
+        groups = []
+        with open("/etc/group", "r") as f:
+            for line in f:
+                parts = line.split(":")
+                if parts and parts[0].strip():
+                    groups.append(parts[0].strip())
+        return sorted(groups)
+    except OSError:
+        return []
+
+
 class BackgroundNames:
     """Loads a (possibly slow) name list in the background so startup and
     the prompt never block on it. Reads of `.names` are safe without a lock

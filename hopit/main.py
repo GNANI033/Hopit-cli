@@ -29,6 +29,8 @@ from hopit.loaders import (
     load_available_packages,
     load_path_entries,
     load_adapters,
+    load_users,
+    load_groups,
     BackgroundNames,
     MANAGER_PKG,
     MANAGER_DISPLAY_NAME,
@@ -190,6 +192,24 @@ def show_command_help(cmd_name: str, commands: dict):
             usage = "reboot [minutes | HH:MM]"
         elif cmd_name == "shutdown":
             usage = "shutdown [minutes | HH:MM]"
+        elif cmd_name == "chmod":
+            usage = "chmod <permissions> <path>"
+        elif cmd_name == "chown":
+            usage = "chown <owner>[:group] <path>"
+        elif cmd_name == "chgrp":
+            usage = "chgrp <group> <path>"
+        elif cmd_name in ("useradd", "adduser"):
+            usage = f"{cmd_name} <username> [password]"
+        elif cmd_name in ("userdel", "deluser"):
+            usage = f"{cmd_name} <username>"
+        elif cmd_name == "usermod":
+            usage = "usermod -aG <group> <username>"
+        elif cmd_name == "passwd":
+            usage = f"{cmd_name} [username]"
+        elif cmd_name in ("groupadd", "addgroup"):
+            usage = f"{cmd_name} <groupname>"
+        elif cmd_name in ("groupdel", "delgroup"):
+            usage = f"{cmd_name} <groupname>"
         else:
             if cmd.needs_arg:
                 kind = cmd.arg_completion_kind or "arg"
@@ -611,12 +631,17 @@ def main():
         )
         available_pkg_getter = available_pkgs_holder.get
 
+    users_holder = BackgroundNames(load_users, start_immediately=False)
+    groups_holder = BackgroundNames(load_groups, start_immediately=False)
+
     names = {
         "service": lambda: services,
         "installed_pkg": lambda: installed_pkgs,
         "available_pkg": available_pkg_getter,
         "path": load_path_entries,
         "adapter": load_adapters,
+        "user": users_holder.get,
+        "group": groups_holder.get,
     }
 
     commands = build_commands(manager, names)

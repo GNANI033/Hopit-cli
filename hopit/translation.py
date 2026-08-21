@@ -18,6 +18,308 @@ def _nval(args, flag, default="10"):
             return args[i+1]
     return default
 
+def translate_chmod_to_windows(args: list[str]) -> str:
+    recursive = False
+    perms = ""
+    path = ""
+    for a in args:
+        if a in ('-R', '--recursive'):
+            recursive = True
+        elif a.startswith('-'):
+            continue
+        elif not perms:
+            perms = a
+        else:
+            path = a
+            
+    if not perms or not path:
+        return ""
+        
+    is_octal = perms.isdigit() and len(perms) in (3, 4)
+    cmd = "icacls " + _q(path)
+    inh = "(OI)(CI)" if os.path.isdir(path) else ""
+    rec_flag = " /t" if recursive else ""
+    
+    if is_octal:
+        oct_str = perms[-3:]
+        u, g, o = int(oct_str[0]), int(oct_str[1]), int(oct_str[2])
+        
+        def to_win_perm(val: int) -> str:
+            if val >= 7: return "F"
+            if val >= 6: return "M"
+            if val >= 5: return "RX"
+            if val >= 4: return "R"
+            if val >= 2: return "W"
+            if val >= 1: return "RX"
+            return ""
+            
+        u_perm = to_win_perm(u)
+        g_perm = to_win_perm(g)
+        o_perm = to_win_perm(o)
+        
+        parts = []
+        if u_perm:
+            parts.append(f"/grant:r *S-1-5-32-544:{inh}({u_perm})")
+        if g_perm:
+            parts.append(f"/grant:r *S-1-5-32-545:{inh}({g_perm})")
+        if o_perm:
+            parts.append(f"/grant:r *S-1-1-0:{inh}({o_perm})")
+            
+        if parts:
+            return f"{cmd} {' '.join(parts)}{rec_flag}"
+            
+    elif "+" in perms or "-" in perms or "=" in perms:
+        action = "+" if "+" in perms else "-" if "-" in perms else "="
+        who, rights = perms.split(action, 1)
+        
+        win_rights = ""
+        if "r" in rights: win_rights += "R"
+        if "w" in rights: win_rights += "W"
+        if "x" in rights: win_rights += "X"
+        
+        if win_rights == "X": win_rights = "RX"
+        if not win_rights: win_rights = "R"
+        
+        target = "*S-1-1-0"
+        if "u" in who:
+            target = "*S-1-5-32-544"
+        elif "g" in who:
+            target = "*S-1-5-32-545"
+            
+        if action == "+":
+            return f"{cmd} /grant:r {target}:{inh}({win_rights}){rec_flag}"
+        elif action == "-":
+            return f"{cmd} /remove {target}{rec_flag}"
+            
+    return ""
+
+
+def translate_chown_to_windows(args: list[str]) -> str:
+    recursive = False
+    owner = ""
+    path = ""
+    for a in args:
+        if a in ('-R', '--recursive'):
+            recursive = True
+        elif a.startswith('-'):
+            continue
+        elif not owner:
+            owner = a
+        else:
+            path = a
+    if not owner or not path:
+        return ""
+    if ":" in owner:
+        owner = owner.split(":")[0]
+    rec_flag = " /t" if recursive else ""
+    return f"icacls {_q(path)} /setowner {_q(owner)}{rec_flag}"
+
+
+def translate_chgrp_to_windows(args: list[str]) -> str:
+    recursive = False
+    group = ""
+    path = ""
+    for a in args:
+        if a in ('-R', '--recursive'):
+            recursive = True
+        elif a.startswith('-'):
+            continue
+        elif not group:
+            group = a
+        else:
+            path = a
+    if not group or not path:
+        return ""
+    rec_flag = " /t" if recursive else ""
+    return f"icacls {_q(path)} /setowner {_q(group)}{rec_flag}"
+
+
+def translate_useradd_to_windows(args: list[str]) -> str:
+    username = ""
+    password = ""
+    for a in args:
+        if a.startswith('-'):
+            continue
+        if not username:
+            username = a
+        elif not password:
+            password = a
+    if not username:
+        return ""
+    if password:
+        return f"net user {_q(username)} {_q(password)} /add"
+    return f"net user {_q(username)} /add"
+
+
+def translate_userdel_to_windows(args: list[str]) -> str:
+    username = next((a for a in args if not a.startswith('-')), "")
+    if not username:
+        return ""
+    return f"net user {_q(username)} /delete"
+
+
+def translate_passwd_to_windows(args: list[str]) -> str:
+    username = next((a for a in args if not a.startswith('-')), "")
+    if not username:
+        return "net user %USERNAME% *"
+    if len(args) >= 2:
+        password = args[1]
+        return f"net user {_q(username)} {_q(password)}"
+    return f"net user {_q(username)} *"
+
+
+def translate_usermod_to_windows(args: list[str]) -> str:
+    if not args:
+        return ""
+    if '-L' in args:
+        username = next((a for a in args if a != '-L'), "")
+        if username:
+            return f"net user {_q(username)} /active:no"
+    if '-U' in args:
+        username = next((a for a in args if a != '-U'), "")
+        if username:
+            return f"net user {_q(username)} /active:yes"
+    group = ""
+    username = ""
+    for i, a in enumerate(args):
+        if a in ('-aG', '-G', '--groups', '--append'):
+            if i + 1 < len(args):
+                group = args[i+1]
+        elif a.startswith('-'):
+            continue
+        else:
+            if not group or a != group:
+                username = a
+    if group and username:
+        if "," in group:
+            group = group.split(",")[0]
+        return f"net localgroup {_q(group)} {_q(username)} /add"
+    return ""
+
+
+def translate_usermod_to_mac(args: list[str]) -> str:
+    if not args:
+        return ""
+    if '-L' in args:
+        username = next((a for a in args if a != '-L'), "")
+        if username:
+            return f"dscl . -create /Users/{_q(username)} UserShell /usr/bin/false"
+    if '-U' in args:
+        username = next((a for a in args if a != '-U'), "")
+        if username:
+            return f"dscl . -create /Users/{_q(username)} UserShell /bin/bash"
+    group = ""
+    username = ""
+    for i, a in enumerate(args):
+        if a in ('-aG', '-G', '--groups', '--append'):
+            if i + 1 < len(args):
+                group = args[i+1]
+        elif a.startswith('-'):
+            continue
+        else:
+            if not group or a != group:
+                username = a
+    if group and username:
+        if "," in group:
+            group = group.split(",")[0]
+        return f"dseditgroup -o edit -a {_q(username)} -t user {_q(group)}"
+    return ""
+
+
+def translate_groupadd_to_windows(args: list[str]) -> str:
+    group = next((a for a in args if not a.startswith('-')), "")
+    if not group:
+        return ""
+    return f"net localgroup {_q(group)} /add"
+
+
+def translate_groupdel_to_windows(args: list[str]) -> str:
+    group = next((a for a in args if not a.startswith('-')), "")
+    if not group:
+        return ""
+    return f"net localgroup {_q(group)} /delete"
+
+
+def translate_win_net_to_unix(args: list[str]) -> str:
+    if not args:
+        return "net"
+    sub = args[0].lower()
+    
+    def has_flag(flag: str) -> bool:
+        return any(flag.lower() in x.lower() for x in args)
+        
+    if sub == "user":
+        if len(args) == 1:
+            if IS_MACOS:
+                return "dscl . list /Users"
+            return "cut -d: -f1 /etc/passwd"
+        username = args[1]
+        if username.startswith('/') or username.startswith('-'):
+            return "net user"
+        if has_flag("/delete") or has_flag("-delete"):
+            if IS_MACOS:
+                return f"sysadminctl -deleteUser {_q(username)}"
+            return f"userdel -r {_q(username)}"
+        if has_flag("/add") or has_flag("-add"):
+            password = ""
+            if len(args) >= 3 and not args[2].startswith('/') and not args[2].startswith('-'):
+                password = args[2]
+            if IS_MACOS:
+                pw_part = f" -password {_q(password)}" if password else ""
+                return f"sysadminctl -addUser {_q(username)}{pw_part}"
+            if password:
+                return f"useradd -m {_q(username)} && echo '{username}:{password}' | chpasswd"
+            return f"useradd -m {_q(username)}"
+        if any("/active:no" in x.lower() for x in args):
+            if IS_MACOS:
+                return f"dscl . -create /Users/{_q(username)} UserShell /usr/bin/false"
+            return f"usermod -L {_q(username)}"
+        if any("/active:yes" in x.lower() for x in args):
+            if IS_MACOS:
+                return f"dscl . -create /Users/{_q(username)} UserShell /bin/bash"
+            return f"usermod -U {_q(username)}"
+        if len(args) == 2:
+            return f"id {_q(username)}"
+            
+    elif sub == "localgroup":
+        if len(args) == 1:
+            if IS_MACOS:
+                return "dscl . list /Groups"
+            return "cut -d: -f1 /etc/group"
+        groupname = args[1]
+        if groupname.startswith('/') or groupname.startswith('-'):
+            return "net localgroup"
+        if len(args) == 2:
+            if IS_MACOS:
+                return f"dscl . -read /Groups/{_q(groupname)} GroupMembership"
+            return f"getent group {_q(groupname)}"
+        member = args[2]
+        if member.startswith('/') or member.startswith('-'):
+            if has_flag("/add") or has_flag("-add"):
+                if IS_MACOS:
+                    return f"dseditgroup -o create {_q(groupname)}"
+                return f"groupadd {_q(groupname)}"
+            if has_flag("/delete") or has_flag("-delete"):
+                if IS_MACOS:
+                    return f"dseditgroup -o delete {_q(groupname)}"
+                return f"groupdel {_q(groupname)}"
+        else:
+            if has_flag("/add") or has_flag("-add"):
+                if IS_MACOS:
+                    return f"dseditgroup -o edit -a {_q(member)} -t user {_q(groupname)}"
+                return f"usermod -aG {_q(groupname)} {_q(member)}"
+            if has_flag("/delete") or has_flag("-delete"):
+                if IS_MACOS:
+                    return f"dseditgroup -o edit -d {_q(member)} -t user {_q(groupname)}"
+                return f"gpasswd -d {_q(member)} {_q(groupname)}"
+                
+    if len(args) >= 2 and args[0].lower() == 'start':
+        return 'systemctl start ' + args[1]
+    if len(args) >= 2 and args[0].lower() == 'stop':
+        return 'systemctl stop ' + args[1]
+    return ' '.join(args)
+
+
 # --- Linux/macOS -> Windows ------------------------------------------------
 _UNIX_TO_WIN: dict = {
     # -- file ops ----------------------------------------------------------
@@ -25,7 +327,7 @@ _UNIX_TO_WIN: dict = {
                            else 'copy ' + _join(a)),
     "mv":       lambda a: 'move ' + _join(a),
     "rm":       lambda a: ('rd /s /q ' if any(x in ('-r','-rf','-fr','-Rf') for x in a) else 'del /Q ')
-                          + ' '.join(_q(x) for x in a if not x.startswith('-')),
+                           + ' '.join(_q(x) for x in a if not x.startswith('-')),
     "ls":       lambda a: 'dir ' + ' '.join(a),
     "cat":      lambda a: 'type ' + _files(a),
     "touch":    lambda a: f'type nul > {_q(a[0])}' if a else 'type nul',
@@ -40,9 +342,19 @@ _UNIX_TO_WIN: dict = {
     "ln":       lambda a: ('mklink /D ' + _q(a[-1]) + ' ' + _q(a[-2])
                            if len(a)>=2 and '-s' in a and os.path.isdir(a[-2])
                            else 'mklink ' + _q(a[-1]) + ' ' + _q(a[-2])) if len(a)>=2 else '',
-    "chmod":    lambda a: '',   # no equivalent; silently skip
-    "chown":    lambda a: '',
-    "chgrp":    lambda a: '',
+    "chmod":    translate_chmod_to_windows,
+    "chown":    translate_chown_to_windows,
+    "chgrp":    translate_chgrp_to_windows,
+    "useradd":  translate_useradd_to_windows,
+    "adduser":  translate_useradd_to_windows,
+    "userdel":  translate_userdel_to_windows,
+    "deluser":  translate_userdel_to_windows,
+    "passwd":   translate_passwd_to_windows,
+    "usermod":  translate_usermod_to_windows,
+    "groupadd": translate_groupadd_to_windows,
+    "addgroup": translate_groupadd_to_windows,
+    "groupdel": translate_groupdel_to_windows,
+    "delgroup": translate_groupdel_to_windows,
     "less":     lambda a: 'more ' + _files(a),
     "more":     lambda a: 'more ' + _files(a),
     "sort":     lambda a: 'sort ' + ' '.join(a),
@@ -185,9 +497,7 @@ _WIN_TO_UNIX: dict = {
                            else 'systemctl stop ' + a[1] if len(a)>=2 and a[0]=='stop'
                            else 'systemctl status ' + a[1] if len(a)>=2 and a[0]=='query'
                            else 'systemctl ' + ' '.join(a)),
-    "net":      lambda a: ('systemctl start ' + a[1] if len(a)>=2 and a[0].lower()=='start'
-                           else 'systemctl stop ' + a[1] if len(a)>=2 and a[0].lower()=='stop'
-                           else ' '.join(a)),
+    "net":      translate_win_net_to_unix,
 }
 
 # --- Linux-specific -> macOS equivalent (applied on macOS only) -----------
@@ -223,6 +533,15 @@ _LINUX_TO_MAC: dict = {
     "nproc":     lambda a: 'sysctl -n hw.logicalcpu',
     "uname":     lambda a: 'uname ' + ' '.join(a),   # works on macOS too
     "fuser":     lambda a: 'lsof ' + ' '.join(a),
+    "useradd":   lambda a: 'sysadminctl -addUser ' + _q(a[0]) + (' -password ' + _q(a[1]) if len(a)>=2 else ''),
+    "adduser":   lambda a: 'sysadminctl -addUser ' + _q(a[0]) + (' -password ' + _q(a[1]) if len(a)>=2 else ''),
+    "userdel":   lambda a: 'sysadminctl -deleteUser ' + _q(a[0]),
+    "deluser":   lambda a: 'sysadminctl -deleteUser ' + _q(a[0]),
+    "usermod":   translate_usermod_to_mac,
+    "groupadd":  lambda a: 'dseditgroup -o create ' + _q(a[0]),
+    "addgroup":  lambda a: 'dseditgroup -o create ' + _q(a[0]),
+    "groupdel":  lambda a: 'dseditgroup -o delete ' + _q(a[0]),
+    "delgroup":  lambda a: 'dseditgroup -o delete ' + _q(a[0]),
 }
 
 # --- macOS-specific -> Linux equivalent (applied on Linux only) -----------
@@ -247,6 +566,19 @@ _MAC_TO_LINUX: dict = {
     "plutil":    lambda a: '',
     "dscacheutil": lambda a: '',
     "airport":   lambda a: 'iwconfig',
+    "sysadminctl": lambda a: (
+        f"userdel -r {_q(a[1])}" if len(a) >= 2 and a[0] == "-deleteUser"
+        else f"useradd -m {_q(a[1])}" + (f" && echo '{a[1]}:{a[3]}' | chpasswd" if len(a) >= 4 and a[2] == "-password" else "")
+        if len(a) >= 2 and a[0] == "-addUser"
+        else "sysadminctl " + ' '.join(a)
+    ),
+    "dseditgroup": lambda a: (
+        f"groupadd {_q(a[2])}" if len(a) >= 3 and a[0] == "-o" and a[1] == "create"
+        else f"groupdel {_q(a[2])}" if len(a) >= 3 and a[0] == "-o" and a[1] == "delete"
+        else f"usermod -aG {_q(a[6])} {_q(a[3])}" if len(a) >= 7 and a[0] == "-o" and a[1] == "edit" and a[2] == "-a" and a[5] == "user"
+        else f"gpasswd -d {_q(a[3])} {_q(a[6])}" if len(a) >= 7 and a[0] == "-o" and a[1] == "edit" and a[2] == "-d" and a[5] == "user"
+        else "dseditgroup " + ' '.join(a)
+    ),
 }
 
 
