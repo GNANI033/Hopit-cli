@@ -177,6 +177,10 @@ def show_command_help(cmd_name: str, commands: dict):
         desc = cmd.desc
         sudo_req = cmd.needs_sudo
         
+        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport"):
+            show_context_help([cmd_name], commands)
+            return
+
         # Build usage syntax based on properties
         if cmd_name == "git":
             usage = "git <subcommand> [args...]"
@@ -210,15 +214,17 @@ def show_command_help(cmd_name: str, commands: dict):
             usage = f"{cmd_name} <groupname>"
         elif cmd_name in ("groupdel", "delgroup"):
             usage = f"{cmd_name} <groupname>"
-        elif cmd_name == "user":
-            usage = "user [add|remove|passwd|join|list] [args...]"
-        elif cmd_name == "group":
-            usage = "group [add|remove|list] [args...]"
-        elif cmd_name in ("permission", "permissions"):
-            usage = f"{cmd_name} [set|owner|group] [args...]"
+        elif cmd_name in ("status", "start", "stop", "restart", "logs", "live", "enable", "disable"):
+            usage = f"{cmd_name} <service_name>"
+        elif cmd_name in ("install", "uninstall"):
+            usage = f"{cmd_name} <package_name>"
+        elif cmd_name == "netconfig":
+            usage = "netconfig <adapter_name>"
+        elif cmd_name == "port":
+            usage = "port <port_number | program_name>"
         else:
             if cmd.needs_arg:
-                kind = cmd.arg_completion_kind or "arg"
+                kind = cmd.arg_completion_kind or "name/path"
                 usage = f"{cmd_name} <{kind}>"
             else:
                 usage = cmd_name
@@ -635,7 +641,7 @@ def execute_line(
             candidate = words[0].lower()
             resolved, matches = resolve_command(all_names, candidate)
             if resolved:
-                show_command_help(resolved, commands)
+                show_context_help([resolved], commands)
             elif matches:
                 console.print(f"\n[bold cyan]Commands starting with '{candidate}':[/bold cyan]")
                 for m in matches:

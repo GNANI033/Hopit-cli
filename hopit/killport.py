@@ -46,6 +46,15 @@ def kill_process_on_port(port: str):
             except Exception:
                 pass
 
+        if not pids and not IS_MACOS:
+            try:
+                res = subprocess.run(["ss", "-tlpn", f"sport = :{port_num}"], capture_output=True, text=True)
+                import re
+                for pid in re.findall(r"pid=(\d+)", res.stdout):
+                    pids.add(pid)
+            except Exception:
+                pass
+
     if not pids:
         print(f"No process found running on port {port_num}.")
         sys.exit(0)

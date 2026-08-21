@@ -464,28 +464,92 @@ def firewall_cmd(arg: str) -> list[str]:
     rest = args[1:]
     target = rest[0] if rest else ""
     
-    if sub == "status":
-        if IS_WINDOWS:
+    if IS_WINDOWS:
+        if sub == "status":
             return ps_command("Get-NetFirewallProfile | Select-Object Name, Enabled")
-        if IS_MACOS:
+        elif sub == "allow":
+            if not target:
+                return []
+            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Allow Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Allow")
+        elif sub in ("block", "deny"):
+            if not target:
+                return []
+            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Block Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Block")
+        return []
+
+    if IS_MACOS:
+        if sub == "status":
             return ["sudo", "pfctl", "-s", "info"]
+        elif sub == "allow":
+            if not target:
+                return []
+            return ["bash", "-c", f"echo 'pass in proto tcp from any to any port {target}' | sudo pfctl -f -"]
+        elif sub in ("block", "deny"):
+            if not target:
+                return []
+            return ["bash", "-c", f"echo 'block in proto tcp from any to any port {target}' | sudo pfctl -f -"]
+        return []
+
+    # --- Linux Auto-Detection ---
+    # 1. firewalld (Fedora / RHEL / CentOS / AlmaLinux / Rocky / openSUSE)
+    if shutil.which("firewall-cmd"):
+        if sub == "status":
+            return ["firewall-cmd", "--state"]
+        elif sub == "allow":
+            if not target:
+                return []
+            return ["bash", "-c", f"firewall-cmd --add-port={target}/tcp --permanent && firewall-cmd --reload"]
+        elif sub in ("block", "deny"):
+            if not target:
+                return []
+            return ["bash", "-c", f"firewall-cmd --remove-port={target}/tcp --permanent 2>/dev/null; firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{target}\" protocol=\"tcp\" drop' --permanent && firewall-cmd --reload"]
+
+    # 2. ufw (Ubuntu / Debian / Mint)
+    if shutil.which("ufw"):
+        if sub == "status":
+            return ["ufw", "status"]
+        elif sub == "allow":
+            if not target:
+                return []
+            return ["ufw", "allow", target]
+        elif sub in ("block", "deny"):
+            if not target:
+                return []
+            return ["ufw", "deny", target]
+
+    # 3. nftables (nft)
+    if shutil.which("nft"):
+        if sub == "status":
+            return ["nft", "list", "ruleset"]
+        elif sub == "allow":
+            if not target:
+                return []
+            return ["nft", "add", "rule", "inet", "filter", "input", "tcp", "dport", target, "accept"]
+        elif sub in ("block", "deny"):
+            if not target:
+                return []
+            return ["nft", "add", "rule", "inet", "filter", "input", "tcp", "dport", target, "drop"]
+
+    # 4. iptables (legacy Linux)
+    if shutil.which("iptables"):
+        if sub == "status":
+            return ["iptables", "-L", "-n", "-v"]
+        elif sub == "allow":
+            if not target:
+                return []
+            return ["iptables", "-A", "INPUT", "-p", "tcp", "--dport", target, "-j", "ACCEPT"]
+        elif sub in ("block", "deny"):
+            if not target:
+                return []
+            return ["iptables", "-A", "INPUT", "-p", "tcp", "--dport", target, "-j", "DROP"]
+
+    # Fallback to ufw
+    if sub == "status":
         return ["ufw", "status"]
     elif sub == "allow":
-        if not target:
-            return []
-        if IS_WINDOWS:
-            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Allow Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Allow")
-        if IS_MACOS:
-            return ["bash", "-c", f"echo 'pass in proto tcp from any to any port {target}' | sudo pfctl -f -"]
-        return ["ufw", "allow", target]
+        return ["ufw", "allow", target] if target else []
     elif sub in ("block", "deny"):
-        if not target:
-            return []
-        if IS_WINDOWS:
-            return ps_command(f"New-NetFirewallRule -DisplayName 'Hopit Block Port {target}' -Direction Inbound -LocalPort {target} -Protocol TCP -Action Block")
-        if IS_MACOS:
-            return ["bash", "-c", f"echo 'block in proto tcp from any to any port {target}' | sudo pfctl -f -"]
-        return ["ufw", "deny", target]
+        return ["ufw", "deny", target] if target else []
     return []
 
 
@@ -502,7 +566,9 @@ def disk_cmd(arg: str) -> list[str]:
             return ps_command("Get-Volume | Select-Object DriveLetter, FileSystemLabel, FileSystem, SizeRemaining, Size | Format-Table -AutoSize")
         if IS_MACOS:
             return ["diskutil", "list"]
-        return ["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT,MODEL"]
+        if shutil.which("lsblk"):
+            return ["lsblk", "-o", "NAME,FSTYPE,SIZE,MOUNTPOINT,MODEL"]
+        return ["df", "-h"]
     elif sub == "usage":
         if IS_WINDOWS:
             return ps_command("Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize")
@@ -531,7 +597,11 @@ def disk_cmd(arg: str) -> list[str]:
             return ["chkdsk", target]
         if IS_MACOS:
             return ["fsck_apfs", target]
-        return ["fsck", "-y", target]
+        if shutil.which("fsck"):
+            return ["fsck", "-y", target]
+        if shutil.which("e2fsck"):
+            return ["e2fsck", "-p", target]
+        return ["fsck", target]
     return []
 
 
