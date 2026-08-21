@@ -457,6 +457,12 @@ def build_commands(manager: str | None, names: dict) -> dict:
             arg_completions=lambda: ["status", "log", "branch", "diff", "add", "commit", "push", "pull", "checkout", "clone"],
             arg_completion_kind="git_subcommand",
         ),
+        "gitsave": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.gitsave"] + (shlex.split(arg) if arg else []),
+            desc="Stage all changes, commit, and push in one shot: gitsave <commit message>",
+            needs_arg=True,
+            mode="capture",
+        ),
     }
 
     if manager:

@@ -18,6 +18,12 @@ def main():
     subcmd = sys.argv[1].lower()
     args = sys.argv[1:]
 
+    if subcmd == "commit":
+        has_message_flag = any(flag in args for flag in ("-m", "--message", "-F", "--file", "-c", "--reedit-message", "-C", "--reuse-message"))
+        if not has_message_flag and len(args) > 1:
+            message = " ".join(args[1:])
+            args = ["commit", "-m", message]
+
     code, stdout, stderr = run_git(args)
     console = Console()
 
