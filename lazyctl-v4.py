@@ -57,6 +57,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 IS_WINDOWS = os.name == "nt"
+IS_MACOS   = not IS_WINDOWS and __import__("sys").platform == "darwin"
 
 # Windows Terminal sets WT_SESSION; plain cmd.exe / PowerShell ISE do not.
 # This controls whether we can use truecolor ANSI and Nerd Font glyphs.
@@ -126,6 +127,7 @@ MIN_ARG_PREFIX_CHARS = {
 MANAGER_DISPLAY_NAME = {
     "apt-get": "apt", "dnf": "dnf", "yum": "yum",
     "pacman": "pacman", "zypper": "zypper", "apk": "apk",
+    "brew": "brew",
     "winget": "winget", "choco": "choco", "scoop": "scoop",
 }
 
@@ -136,6 +138,7 @@ MANAGER_UPDATE_CMDS = {
     "pacman":  "pacman -Syu --noconfirm",
     "zypper":  "zypper --non-interactive update",
     "apk":     "apk update && apk upgrade",
+    "brew":    "brew update && brew upgrade",
     "winget":  "winget upgrade --all --accept-package-agreements --accept-source-agreements",
     "choco":   "choco upgrade all -y",
     "scoop":   "scoop update *",
@@ -186,6 +189,13 @@ MANAGER_PKG = {
         "available_cmd": ["apk", "search", "-q"],
         "available_parse": None,
     },
+    "brew": {
+        "install": lambda pkg: ["brew", "install", pkg],
+        "remove":  lambda pkg: ["brew", "uninstall", pkg],
+        "installed_cmd": ["brew", "list", "--formula"],
+        "available_cmd": None,   # brew search is slow; skip background load
+        "available_parse": None,
+    },
     "winget": {
         "install": lambda pkg: ["winget", "install", "--id", pkg, "--accept-package-agreements", "--accept-source-agreements"],
         "remove": lambda pkg: ["winget", "uninstall", "--id", pkg],
@@ -215,13 +225,14 @@ MANAGER_PKG = {
 
 
 def detect_package_manager() -> Optional[str]:
-    """Detect by checking which manager binary is actually on PATH —
-    more reliable across distro derivatives than parsing os-release."""
+    """Detect by checking which manager binary is actually on PATH."""
     if IS_WINDOWS:
         for mgr in ("winget", "choco", "scoop"):
             if shutil.which(mgr):
                 return mgr
         return None
+    if IS_MACOS:
+        return "brew" if shutil.which("brew") else None
     for mgr in ("apt-get", "dnf", "yum", "pacman", "zypper", "apk"):
         if shutil.which(mgr):
             return mgr
@@ -231,13 +242,17 @@ def detect_package_manager() -> Optional[str]:
 def read_os_pretty_name() -> str:
     if IS_WINDOWS:
         try:
-            proc = subprocess.run(
-                ["cmd", "/c", "ver"],
-                capture_output=True, text=True, timeout=2,
-            )
+            proc = subprocess.run(["cmd", "/c", "ver"], capture_output=True, text=True, timeout=2)
             return proc.stdout.strip() or "Windows"
         except Exception:
             return "Windows"
+    if IS_MACOS:
+        try:
+            name = subprocess.run(["sw_vers", "-productName"],    capture_output=True, text=True, timeout=2).stdout.strip()
+            ver  = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True, timeout=2).stdout.strip()
+            return f"{name} {ver}" if name else "macOS"
+        except Exception:
+            return "macOS"
     try:
         with open("/etc/os-release") as f:
             for line in f:
@@ -306,6 +321,23 @@ def load_service_names() -> List[str]:
             timeout=5,
         )
         return sorted(set(l.strip() for l in lines if l.strip()))
+
+    if IS_MACOS:
+        names: List[str] = []
+        # brew services (most common for dev tools)
+        if shutil.which("brew"):
+            lines = _run_lines(["brew", "services", "list"], timeout=5)
+            for line in lines[1:]:   # skip header
+                parts = line.split()
+                if parts:
+                    names.append(parts[0])
+        # user launchd agents
+        lctl = _run_lines(["launchctl", "list"], timeout=3)
+        for line in lctl[1:]:
+            parts = line.split()
+            if len(parts) >= 3 and parts[2] != "-":
+                names.append(parts[2])
+        return sorted(set(names))
 
     lines = _run_lines(
         ["systemctl", "list-unit-files", "--type=service", "--no-legend", "--no-pager"],
@@ -531,6 +563,13 @@ def load_adapters() -> List[str]:
             timeout=5,
         )
         return sorted(set(l.strip() for l in lines if l.strip()))
+    if IS_MACOS:
+        lines = _run_lines(["networksetup", "-listallnetworkservices"], timeout=3)
+        # First line is a notice; lines starting with * are disabled
+        return sorted(
+            l.strip().lstrip("*").strip()
+            for l in lines[1:] if l.strip()
+        )
     try:
         return sorted(os.listdir('/sys/class/net/'))
     except OSError:
@@ -713,24 +752,42 @@ def ps_quote(value: str) -> str:
 def system_status_cmd(svc: str) -> List[str]:
     if IS_WINDOWS:
         return ["sc", "query", svc]
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "info", svc]
+        return ["launchctl", "print", f"system/{svc}"]
     return ["systemctl", "status", svc]
 
 
 def system_start_cmd(svc: str) -> List[str]:
     if IS_WINDOWS:
         return ["sc", "start", svc]
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "start", svc]
+        return ["sudo", "launchctl", "load", f"/Library/LaunchDaemons/{svc}.plist"]
     return ["systemctl", "start", svc]
 
 
 def system_stop_cmd(svc: str) -> List[str]:
     if IS_WINDOWS:
         return ["sc", "stop", svc]
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "stop", svc]
+        return ["sudo", "launchctl", "unload", f"/Library/LaunchDaemons/{svc}.plist"]
     return ["systemctl", "stop", svc]
 
 
 def system_restart_cmd(svc: str) -> List[str]:
     if IS_WINDOWS:
         return ps_command(f"Restart-Service -Name {ps_quote(svc)}")
+    if IS_MACOS:
+        if shutil.which("brew"):
+            return ["brew", "services", "restart", svc]
+        return ["bash", "-c",
+                f"sudo launchctl unload /Library/LaunchDaemons/{svc}.plist 2>/dev/null; "
+                f"sudo launchctl load /Library/LaunchDaemons/{svc}.plist"]
     return ["systemctl", "restart", svc]
 
 
@@ -744,6 +801,10 @@ def system_logs_cmd(svc: str) -> List[str]:
             "-MaxEvents 50 | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) } "
             "| Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap"
         )
+    if IS_MACOS:
+        return ["log", "show", "--last", "1h",
+                "--predicate", f'process == "{svc}" OR subsystem == "{svc}"',
+                "--info"]
     return ["journalctl", "-u", svc, "-n", "50", "--no-pager"]
 
 
@@ -760,6 +821,9 @@ def system_live_logs_cmd(svc: str) -> List[str]:
             "$events | Sort-Object TimeCreated | Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap; "
             "$last = Get-Date; Start-Sleep -Seconds 2 }"
         )
+    if IS_MACOS:
+        return ["log", "stream",
+                "--predicate", f'process == "{svc}" OR subsystem == "{svc}"']
     return ["journalctl", "-u", svc, "-f"]
 
 
@@ -810,6 +874,8 @@ def list_cmd(arg: str) -> List[str]:
 def ip_cmd() -> List[str]:
     if IS_WINDOWS:
         return ["ipconfig", "/all"]
+    if IS_MACOS:
+        return ["ifconfig"]
     return ["ip", "-c=always", "a"]
 
 
@@ -832,6 +898,10 @@ def port_cmd(arg: str) -> List[str]:
                 "| Format-Table -AutoSize"
             )
         return ps_command(script)
+    if IS_MACOS:
+        if arg.isdigit():
+            return ["lsof", "-i", f":{arg}", "-n", "-P"]
+        return ["bash", "-c", f"lsof -i -n -P | grep -i {shlex.quote(arg)}"]
     return [
         "bash", "-c",
         "ss -tulnp | awk -v port=" + shlex.quote(arg) + " "
@@ -1222,6 +1292,47 @@ def print_help(commands: dict, manager: Optional[str]):
         console.print("[yellow]No supported package manager detected — install/remove/update unavailable.[/yellow]")
 
 
+def configure_macos_network(adapter: str, style):
+    """Interactive network configuration for macOS using networksetup."""
+    try:
+        console.print(f"\n[bold cyan]Configuring {adapter}[/bold cyan]")
+        mode_completer = WordCompleter(["dhcp", "static", "up", "down"], ignore_case=True)
+        mode = prompt([("class:prompt", "Action [dhcp/static/up/down]: ")],
+                      completer=mode_completer, style=style).strip().lower()
+        if mode not in ("dhcp", "static", "up", "down"):
+            console.print("[red]Invalid action. Aborting.[/red]")
+            return
+        if mode == "up":
+            subprocess.run(["sudo", "networksetup", "-setnetworkserviceenabled", adapter, "on"])
+            console.print("[bold green]Done.[/bold green]")
+        elif mode == "down":
+            subprocess.run(["sudo", "networksetup", "-setnetworkserviceenabled", adapter, "off"])
+            console.print("[bold yellow]Done.[/bold yellow]")
+        elif mode == "dhcp":
+            console.print(f"[green]Applying DHCP to {adapter}...[/green]")
+            subprocess.run(["sudo", "networksetup", "-setdhcp", adapter])
+            console.print("[bold green]Success![/bold green]")
+        else:
+            empty = DummyCompleter()
+            ip_addr = prompt([("class:prompt", "IP Address (e.g. 192.168.1.50): ")], completer=empty, style=style).strip()
+            mask    = prompt([("class:prompt", "Subnet mask (e.g. 255.255.255.0): ")], completer=empty, style=style).strip()
+            gw      = prompt([("class:prompt", "Gateway (e.g. 192.168.1.1): ")],    completer=empty, style=style).strip()
+            dns     = prompt([("class:prompt", "DNS (e.g. 8.8.8.8): ")],            completer=empty, style=style).strip()
+            if not ip_addr or not mask:
+                console.print("[red]IP address and subnet mask are required. Aborting.[/red]")
+                return
+            console.print(f"[green]Applying static IP to {adapter}...[/green]")
+            cmd = ["sudo", "networksetup", "-setmanual", adapter, ip_addr, mask]
+            if gw:
+                cmd.append(gw)
+            subprocess.run(cmd)
+            if dns:
+                subprocess.run(["sudo", "networksetup", "-setdnsservers", adapter, dns])
+            console.print("[bold green]Success![/bold green]")
+    except KeyboardInterrupt:
+        console.print("\n[dim]Cancelled.[/dim]")
+
+
 def configure_windows_network(adapter: str, style):
     adapters = load_adapters()
     if adapter not in adapters:
@@ -1604,12 +1715,16 @@ def main():
             if IS_WINDOWS:
                 configure_windows_network(rest[0], style)
                 continue
+            if IS_MACOS:
+                configure_macos_network(rest[0], style)
+                continue
             adapter = rest[0]
             if not os.path.exists(f"/sys/class/net/{adapter}"):
                 console.print(f"[red]Adapter '{adapter}' not found on this system.[/red]")
                 continue
-                
+
             if not shutil.which("nmcli"):
+
                 console.print("[red]NetworkManager (nmcli) is not installed. Currently, only NetworkManager is supported for this feature.[/red]")
                 continue
 
