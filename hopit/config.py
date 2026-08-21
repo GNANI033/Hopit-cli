@@ -41,6 +41,17 @@ else:
 
 def detect_package_manager() -> str | None:
     """Detect by checking which manager binary is actually on PATH."""
+    try:
+        config_path = os.path.expanduser("~/.hopit-config.json")
+        if os.path.exists(config_path):
+            import json
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+                if cfg.get("package_manager"):
+                    return cfg["package_manager"]
+    except Exception:
+        pass
+
     if IS_WINDOWS:
         for mgr in ("winget", "choco", "scoop"):
             if shutil.which(mgr):
@@ -80,6 +91,17 @@ def read_os_pretty_name() -> str:
 
 def detect_editor() -> str | None:
     """Return the first available text editor, preferring nano."""
+    try:
+        config_path = os.path.expanduser("~/.hopit-config.json")
+        if os.path.exists(config_path):
+            import json
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+                if cfg.get("editor"):
+                    return cfg["editor"]
+    except Exception:
+        pass
+
     if IS_WINDOWS:
         for editor in ("notepad.exe", "code.cmd", "code.exe"):
             if shutil.which(editor):

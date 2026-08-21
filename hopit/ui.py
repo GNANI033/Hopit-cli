@@ -83,6 +83,97 @@ def completion_matches(text_before_cursor: str, commands: dict, all_names: list[
                 break
     return matches
 
+def get_git_completions(words: list[str]) -> list[tuple[str, str]]:
+    if len(words) == 2:
+        git_subcommand_descs = {
+            "status": "Show working tree status",
+            "log": "Show commit logs",
+            "branch": "List, create, or delete branches",
+            "diff": "Show changes between commits/files",
+            "add": "Add file contents to the index",
+            "commit": "Record changes to the repository",
+            "push": "Update remote refs and commits",
+            "pull": "Fetch and integrate with remote",
+            "checkout": "Switch branches or restore files",
+            "clone": "Clone a repository into a new directory",
+        }
+        return [(cmd, desc) for cmd, desc in git_subcommand_descs.items()]
+
+    subcmd = words[1].lower()
+    word = words[-1]
+
+    # 1. Get git status changes
+    changed_files = {}
+    try:
+        res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=1)
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                if len(line) > 3:
+                    status = line[:2]
+                    filename = line[3:].strip()
+                    if "M" in status:
+                        desc = "⚠️ modified"
+                    elif "?" in status:
+                        desc = "🆕 untracked"
+                    elif "D" in status:
+                        desc = "❌ deleted"
+                    elif "A" in status:
+                        desc = "🟢 staged"
+                    else:
+                        desc = "changed file"
+                    changed_files[filename] = desc
+    except Exception:
+        pass
+
+    # 2. Get git branch names
+    branches = []
+    try:
+        res = subprocess.run(["git", "branch", "--format=%(refname:short)"], capture_output=True, text=True, timeout=1)
+        if res.returncode == 0:
+            branches = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+    except Exception:
+        pass
+
+    if subcmd in ("add", "rm", "restore", "stage", "reset"):
+        candidates = []
+        for fn, desc in changed_files.items():
+            candidates.append((fn, desc))
+        from hopit.loaders import load_path_entries
+        paths = load_path_entries(word)
+        existing = {c[0] for c in candidates}
+        for p in paths:
+            if p not in existing:
+                desc = "📁 folder" if os.path.isdir(p) else "📄 file"
+                candidates.append((p, desc))
+        return candidates
+
+    elif subcmd in ("checkout", "switch"):
+        candidates = []
+        for b in branches:
+            candidates.append((b, "🌿 branch"))
+        for fn, desc in changed_files.items():
+            candidates.append((fn, desc))
+        from hopit.loaders import load_path_entries
+        paths = load_path_entries(word)
+        existing = {c[0] for c in candidates}
+        for p in paths:
+            if p not in existing:
+                desc = "📁 folder" if os.path.isdir(p) else "📄 file"
+                candidates.append((p, desc))
+        return candidates
+
+    elif subcmd in ("branch", "merge", "rebase"):
+        return [(b, "🌿 branch") for b in branches]
+
+    # Fallback to standard path completions
+    from hopit.loaders import load_path_entries
+    paths = load_path_entries(word)
+    candidates = []
+    for p in paths:
+        desc = "📁 folder" if os.path.isdir(p) else "📄 file"
+        candidates.append((p, desc))
+    return candidates
+
 
 class LazyCompleter(Completer):
     def __init__(self, commands: dict):
@@ -92,7 +183,26 @@ class LazyCompleter(Completer):
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
         words = text.split(" ")
+        words = [w for w in words[:-1] if w] + [words[-1]]
         word = words[-1]
+
+        # Check if we are completing for git
+        if len(words) > 1:
+            head = words[0].lower()
+            resolved, _ = resolve_command(self.all_names, head)
+            if resolved == "git":
+                git_candidates = get_git_completions(words)
+                word_lower = word.lower()
+                matches = []
+                for cand, meta in git_candidates:
+                    if cand.lower().startswith(word_lower):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
+                return
+
         matches = completion_matches(text, self.commands, self.all_names)
 
         # Detect if we're completing a path-type argument
@@ -103,33 +213,111 @@ class LazyCompleter(Completer):
             if resolved and resolved in self.commands:
                 arg_kind = self.commands[resolved].arg_completion_kind
 
+        git_subcommand_descs = {
+            "status": "Show working tree status",
+            "log": "Show commit logs",
+            "branch": "List, create, or delete branches",
+            "diff": "Show changes between commits, commit and working tree, etc.",
+            "add": "Add file contents to the index",
+            "commit": "Record changes to the repository",
+            "push": "Update remote refs along with associated objects",
+            "pull": "Fetch from and integrate with another repository or a local branch",
+            "checkout": "Switch branches or restore working tree files",
+            "clone": "Clone a repository into a new directory",
+        }
+
         for match in matches:
-            if arg_kind == "path":
-                if os.path.isdir(match):
-                    meta = "📁 folder"
+            if len(words) > 1:
+                # Completing an argument
+                if arg_kind == "path":
+                    if os.path.isdir(match):
+                        meta = "📁 folder"
+                    else:
+                        meta = "📄 file"
+                elif arg_kind == "git_subcommand":
+                    meta = git_subcommand_descs.get(match.lower(), "git subcommand")
                 else:
-                    meta = "📄 file"
+                    meta = arg_kind if arg_kind else ""
             else:
+                # Completing a command name
                 cmd = self.commands.get(match)
                 meta = cmd.desc if cmd else BUILTIN_DESCRIPTIONS.get(match, "")
             yield Completion(match, start_position=-len(word), display_meta=meta)
 
 
-def render_result(proc: subprocess.CompletedProcess, label: str):
+def render_result(
+    proc: subprocess.CompletedProcess,
+    label: str,
+    cmd_name: str = None,
+    cmd_arg: str = None,
+    show_cmd: bool = False,
+):
     output = (proc.stdout or "") + (proc.stderr or "")
     output = output.rstrip("\n")
 
-    if "active (running)" in output:
+    output_lower = output.lower()
+    if "active (running)" in output_lower or "running" in output_lower or "online" in output_lower:
         border = "green"
-    elif "failed" in output or proc.returncode not in (0, 3):
+    elif "failed" in output_lower or "error" in output_lower or proc.returncode not in (0, 3):
         border = "red"
-    elif "inactive" in output or "dead" in output:
+    elif "inactive" in output_lower or "dead" in output_lower or "stopped" in output_lower:
         border = "yellow"
     else:
         border = "cyan"
 
-    content = Text.from_ansi(output) if output else "(no output)"
-    console.print(Panel(content, title=label, border_style=border, expand=False))
+    if output:
+        lines = output.splitlines()
+        styled_lines = []
+        for i, line in enumerate(lines):
+            line_text = Text.from_ansi(line)
+            is_header = False
+            if i == 0 and len(line.strip()) > 0:
+                header_words = ["netid", "state", "recv-q", "send-q", "local", "peer", "command", "pid", "user", "fd", "type", "device", "node", "name", "status", "ports", "service", "displayname"]
+                line_lower = line.lower()
+                if any(hw in line_lower for hw in header_words) or (len(line.split()) >= 3 and all(w[0].isupper() or w[0].isdigit() or not w[0].isalpha() for w in line.split() if w)):
+                    is_header = True
+            
+            if is_header:
+                line_text.stylize("bold cyan")
+            else:
+                line_text.highlight_regex(r"(?i)\b(active \(running\)|running|up|online|enabled|listen|listening|estab|established|success|succeeded)\b", "bold green")
+                line_text.highlight_regex(r"(?i)\b(inactive \(dead\)|inactive|dead|disabled|down|offline|unconn|stopped)\b", "bold yellow")
+                line_text.highlight_regex(r"(?i)\b(failed|error|severe|critical|stopped \(failed\))\b", "bold red")
+                line_text.highlight_regex(r"^\s*[A-Za-z_-]+(?:\s+[A-Za-z_-]+)*\s*:", "bold cyan")
+                line_text.highlight_regex(r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\b", "cyan")
+                line_text.highlight_regex(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d+)?(:\d+)?\b", "green")
+                line_text.highlight_regex(r"\b([a-fA-F0-9:]+::[a-fA-F0-9:]*(/\d+)?|::[a-fA-F0-9:]*(/\d+)?)\b", "green")
+                line_text.highlight_regex(r"\b[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){5}\b", "yellow")
+                line_text.highlight_regex(r"\b(\*|\[::\]|localhost|\[[a-fA-F0-9:]+\]):\d+\b", "green")
+                line_text.highlight_regex(r"\bpid=\d+\b", "magenta")
+                line_text.highlight_regex(r"users:\(\(.*?\)\)", "magenta")
+                
+            styled_lines.append(line_text)
+        content = Text("\n").join(styled_lines)
+    else:
+        if proc.returncode in (0, 3):
+            if cmd_name == "start":
+                content_str = f"Service '{cmd_arg}' started successfully." if cmd_arg else "Service started successfully."
+            elif cmd_name == "stop":
+                content_str = f"Service '{cmd_arg}' stopped successfully." if cmd_arg else "Service stopped successfully."
+            elif cmd_name == "restart":
+                content_str = f"Service '{cmd_arg}' restarted successfully." if cmd_arg else "Service restarted successfully."
+            elif cmd_name == "install":
+                content_str = f"Package '{cmd_arg}' installed successfully." if cmd_arg else "Package installed successfully."
+            elif cmd_name == "uninstall":
+                content_str = f"Package '{cmd_arg}' uninstalled successfully." if cmd_arg else "Package uninstalled successfully."
+            else:
+                content_str = "Command executed successfully."
+            content = Text(content_str, style="bold green")
+        else:
+            if cmd_name in ("start", "stop", "restart", "install", "uninstall") and cmd_arg:
+                content_str = f"Failed to run action '{cmd_name}' on '{cmd_arg}' (exit code: {proc.returncode})."
+            else:
+                content_str = f"Command failed (exit code: {proc.returncode})."
+            content = Text(content_str, style="bold red")
+
+    title = label if show_cmd else None
+    console.print(Panel(content, title=title, border_style=border, expand=False))
 
 
 def print_help(commands: dict, manager: str | None):

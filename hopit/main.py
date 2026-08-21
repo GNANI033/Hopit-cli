@@ -161,6 +161,56 @@ def run_shell_line(line: str, shell: str):
         subprocess.run(line, shell=True, executable=shell)
 
 
+def show_command_help(cmd_name: str, commands: dict):
+    from rich.panel import Panel
+    desc = ""
+    usage = ""
+    sudo_req = False
+
+    if cmd_name in BUILTIN_DESCRIPTIONS:
+        desc = BUILTIN_DESCRIPTIONS[cmd_name]
+        usage = cmd_name
+    elif cmd_name in commands:
+        cmd = commands[cmd_name]
+        desc = cmd.desc
+        sudo_req = cmd.needs_sudo
+        
+        # Build usage syntax based on properties
+        if cmd_name == "git":
+            usage = "git <subcommand> [args...]"
+        elif cmd_name == "sqlite":
+            usage = "sqlite <database_file> [SQL query]"
+        elif cmd_name == "config":
+            usage = "config [set <setting> <value> | reset]"
+        elif cmd_name == "copy":
+            usage = "copy <source> <destination>"
+        elif cmd_name == "move":
+            usage = "move <source> <destination>"
+        elif cmd_name == "reboot":
+            usage = "reboot [minutes | HH:MM]"
+        elif cmd_name == "shutdown":
+            usage = "shutdown [minutes | HH:MM]"
+        else:
+            if cmd.needs_arg:
+                kind = cmd.arg_completion_kind or "arg"
+                usage = f"{cmd_name} <{kind}>"
+            else:
+                usage = cmd_name
+
+    help_text = f"[bold cyan]Description:[/bold cyan] {desc}\n"
+    help_text += f"[bold cyan]Usage:[/bold cyan]       [yellow]{usage}[/yellow]\n"
+    if sudo_req:
+        help_text += "[bold red]Note:[/bold red]        Requires root/sudo privileges.\n"
+
+    panel = Panel(
+        help_text.strip(),
+        title=f"[bold green]Help: {cmd_name}[/bold green]",
+        border_style="cyan",
+        expand=False
+    )
+    console.print(panel)
+
+
 def execute_line(
     line: str,
     shell: str,
@@ -170,11 +220,60 @@ def execute_line(
     manager: str | None,
 ) -> bool:
     """Executes a single command line. Returns True to continue prompt loop, False to exit."""
+    line_strip = line.strip()
+    if not line_strip:
+        return True
+
+    # Check for "?" helper command
+    if line_strip.endswith("?"):
+        query = line_strip[:-1].strip()
+        if not query:
+            # Just "?" was typed: list all commands
+            console.print("\n[bold cyan]Available Commands:[/bold cyan]")
+            for name in sorted(all_names):
+                desc = commands[name].desc if name in commands else BUILTIN_DESCRIPTIONS.get(name, "")
+                console.print(f"  [green]{name:15}[/green] : {desc}")
+            console.print()
+            return True
+
+        words = query.split()
+        if len(words) == 1:
+            candidate = words[0].lower()
+            resolved, matches = resolve_command(all_names, candidate)
+            if resolved:
+                show_command_help(resolved, commands)
+            elif matches:
+                console.print(f"\n[bold cyan]Commands starting with '{candidate}':[/bold cyan]")
+                for m in matches:
+                    desc = commands[m].desc if m in commands else BUILTIN_DESCRIPTIONS.get(m, "")
+                    console.print(f"  [green]{m:15}[/green] : {desc}")
+                console.print()
+            else:
+                console.print(f"[red]No commands match the prefix '{candidate}'.[/red]")
+            return True
+        else:
+            first_word = words[0].lower()
+            resolved, _ = resolve_command(all_names, first_word)
+            if resolved:
+                show_command_help(resolved, commands)
+            else:
+                console.print(f"[red]Unknown command: {first_word}[/red]")
+            return True
+
+    show_cmd = False
     try:
         tokens = shlex.split(line, posix=not IS_WINDOWS)
     except ValueError as e:
         console.print(f"[red]Parse error: {e}[/red]")
         return True
+
+    if not tokens:
+        return True
+
+    if "--show" in tokens:
+        show_cmd = True
+        tokens = [t for t in tokens if t != "--show"]
+        line = " ".join(shlex.quote(t) for t in tokens)
 
     head, *rest = tokens
 
@@ -191,6 +290,8 @@ def execute_line(
             translated = translate_cross_platform(tokens)
             if translated is not None:
                 try:
+                    if show_cmd:
+                        console.print(f"[dim]Running command: {translated}[/dim]")
                     run_shell_line(translated, shell)
                 except Exception as e:
                     console.print(f"[red]Command failed: {e}[/red]")
@@ -198,6 +299,8 @@ def execute_line(
                 # Fallback: expand aliases then run as a raw shell command
                 expanded = expand_aliases(line, aliases)
                 try:
+                    if show_cmd:
+                        console.print(f"[dim]Running command: {expanded}[/dim]")
                     run_shell_line(expanded, shell)
                 except Exception as e:
                     console.print(f"[red]Command failed: {e}[/red]")
@@ -457,7 +560,7 @@ def execute_line(
         console.print(f"[yellow]'{name}' needs an argument, e.g.:[/yellow] {name} <name>")
         return True
 
-    arg = rest[0] if rest else ""
+    arg = " ".join(rest) if rest else ""
     real_cmd = with_privilege(cmd.run(arg), cmd.needs_sudo)
 
     if cmd.mode == "stream":
@@ -481,7 +584,7 @@ def execute_line(
         console.print("[red]Command timed out.[/red]")
         return True
 
-    render_result(proc, label=" ".join(real_cmd))
+    render_result(proc, label=" ".join(real_cmd), cmd_name=name, cmd_arg=arg, show_cmd=show_cmd)
     return True
 
 

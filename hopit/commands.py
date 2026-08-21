@@ -1,6 +1,7 @@
 import re
 import shlex
 import shutil
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
@@ -421,6 +422,40 @@ def build_commands(manager: str | None, names: dict) -> dict:
             needs_arg=True,
             arg_completions=names["path"],
             arg_completion_kind="path",
+        ),
+        "sysinfo": Command(
+            run=lambda _: [sys.executable, "-m", "hopit.sysinfo"],
+            desc="Show detailed system information (OS, CPU, Memory, Disk, Uptime)",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "processes": Command(
+            run=lambda _: [sys.executable, "-m", "hopit.processes"],
+            desc="List running processes on the system",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "sqlite": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sqlite"] + (shlex.split(arg) if arg else []),
+            desc="Query or inspect SQLite databases: sqlite <db_path> [SQL query]",
+            needs_arg=True,
+            mode="capture",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "config": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.config_cmd"] + (shlex.split(arg) if arg else []),
+            desc="View or modify hopit-cli configuration options: config [set <setting> <value> | reset]",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "git": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.git"] + (shlex.split(arg) if arg else []),
+            desc="Run git commands with colorized log, branch, status, and diff rendering: git <subcommand> [args]",
+            needs_arg=True,
+            mode="capture",
+            arg_completions=lambda: ["status", "log", "branch", "diff", "add", "commit", "push", "pull", "checkout", "clone"],
+            arg_completion_kind="git_subcommand",
         ),
     }
 
