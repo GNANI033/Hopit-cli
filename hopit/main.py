@@ -550,12 +550,15 @@ def show_context_help(words: list[str], commands: dict):
     if resolved == "firewall":
         if not subcmd:
             table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]status[/green]", "Check firewall rules and profile status")
-            table.add_row("[green]allow <port>[/green]", "Allow incoming traffic on port")
-            table.add_row("[green]block <port>[/green]", "Block incoming traffic on port")
+            table.add_row("[green]status[/green]", "Check firewall rules with numbered IDs")
+            table.add_row("[green]allow <port> [proto] [iface] [name][/green]", "Allow incoming traffic on port")
+            table.add_row("[green]block <port> [proto] [iface] [name][/green]", "Block incoming traffic on port")
+            table.add_row("[green]delete <ID_or_port>[/green]", "Delete a specific firewall rule by ID or port")
             console.print(Panel(table, title=title, border_style="cyan", expand=False))
         elif subcmd in ("allow", "block") and len(rest) == 0:
             console.print(Panel("[yellow]<port>[/yellow]  Specify the port number to allow/block", title=title, border_style="cyan", expand=False))
+        elif subcmd in ("delete", "remove") and len(rest) == 0:
+            console.print(Panel("[yellow]<ID_or_port>[/yellow]  Specify the Rule ID number (from firewall status) or port to delete", title=title, border_style="cyan", expand=False))
         else:
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return

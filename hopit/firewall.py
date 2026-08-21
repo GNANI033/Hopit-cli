@@ -67,37 +67,78 @@ def get_network_interfaces() -> list[str]:
             return ["eth0", "wlan0"]
 
 
-def select_menu(prompt_title: str, options: list[str], default_index: int = 0) -> str:
-    """Displays an intuitive numbered selection menu to prevent typos."""
-    if HAS_RICH and console:
-        console.print(f"\n[bold cyan]{prompt_title}:[/bold cyan]")
-        for idx, opt in enumerate(options, 1):
-            def_tag = " [dim](default)[/dim]" if idx - 1 == default_index else ""
-            console.print(f"  [green]{idx})[/green] [yellow]{opt}[/yellow]{def_tag}")
+def select_dropdown(title: str, choices: list[str], default_idx: int = 0) -> str:
+    """Interactive Arrow-Key Dropdown Menu (Use Up/Down arrows + Enter)."""
+    if not choices:
+        return ""
+    if not sys.stdin.isatty():
+        return choices[default_idx]
+
+    current_idx = default_idx
+
+    if IS_WINDOWS:
+        import msvcrt
+        def getch():
+            ch = msvcrt.getch()
+            if ch in (b'\x00', b'\xe0'):
+                ch = msvcrt.getch()
+                if ch == b'H': return 'UP'
+                if ch == b'P': return 'DOWN'
+            if ch in (b'\r', b'\n'): return 'ENTER'
+            return None
     else:
-        print(f"\n{prompt_title}:")
-        for idx, opt in enumerate(options, 1):
-            def_tag = " (default)" if idx - 1 == default_index else ""
-            print(f"  {idx}) {opt}{def_tag}")
+        import termios, tty
+        def getch():
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                ch = sys.stdin.read(1)
+                if ch == '\x1b':
+                    ch2 = sys.stdin.read(1)
+                    ch3 = sys.stdin.read(1)
+                    if ch3 == 'A': return 'UP'
+                    if ch3 == 'B': return 'DOWN'
+                if ch in ('\r', '\n'): return 'ENTER'
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return None
+
+    if HAS_RICH and console:
+        console.print(f"\n[bold cyan]{title}[/bold cyan] [dim](Use ↑/↓ arrows and press ENTER)[/dim]:")
+    else:
+        print(f"\n{title} (Use UP/DOWN arrows and press ENTER):")
+
+    lines_to_clear = len(choices)
+    first_render = True
     
-    prompt_str = f"Enter selection [1-{len(options)}] (default {default_index + 1}): "
-    choice = input(prompt_str).strip()
-    if not choice:
-        return options[default_index]
-    if choice.isdigit():
-        val = int(choice)
-        if 1 <= val <= len(options):
-            return options[val - 1]
-    # Match by text prefix or full text
-    for opt in options:
-        if opt.lower().startswith(choice.lower()):
-            return opt
-    return options[default_index]
+    while True:
+        if not first_render:
+            sys.stdout.write(f"\033[{lines_to_clear}A")
+        first_render = False
+
+        for idx, choice in enumerate(choices):
+            if idx == current_idx:
+                sys.stdout.write(f"\033[K  \033[1;36m❯ 🔘 {choice}\033[0m\n")
+            else:
+                sys.stdout.write(f"\033[K    ⚪ {choice}\n")
+        sys.stdout.flush()
+
+        key = getch()
+        if key == 'UP':
+            current_idx = (current_idx - 1) % len(choices)
+        elif key == 'DOWN':
+            current_idx = (current_idx + 1) % len(choices)
+        elif key == 'ENTER':
+            break
+
+    return choices[current_idx]
 
 
-def show_firewall_status_table():
-    """Parses system firewall status and displays a formatted Table."""
-    rows = []
+def parse_firewall_rules() -> list[dict]:
+    """Parses system firewall state into structured numbered rule objects."""
+    rules = []
+    rule_id = 1
 
     if IS_WINDOWS:
         try:
@@ -112,10 +153,20 @@ def show_firewall_status_table():
                 name = parts[0] if parts else "Inbound Rule"
                 action = "ALLOW" if "Allow" in line else "BLOCK"
                 port = parts[-1] if len(parts) > 1 and parts[-1].isdigit() else "Any"
-                rows.append((name, port, "TCP/UDP", action, "Inbound", "Windows Firewall"))
-        except Exception as e:
-            print(f"Error reading Windows Firewall rules: {e}")
-            return
+                rules.append({
+                    "id": rule_id,
+                    "type": "win",
+                    "name": name,
+                    "port": port,
+                    "proto": "TCP/UDP",
+                    "action": action,
+                    "iface": "Inbound",
+                    "details": "Windows Firewall",
+                    "raw": name
+                })
+                rule_id += 1
+        except Exception:
+            pass
     elif IS_MACOS:
         try:
             res = subprocess.run(["sudo", "pfctl", "-sr"], capture_output=True, text=True)
@@ -126,9 +177,20 @@ def show_firewall_status_table():
                 action = "ALLOW" if line.startswith("pass") else "BLOCK"
                 port_match = re.search(r"port\s+(\d+|\w+)", line)
                 port = port_match.group(1) if port_match else "Any"
-                rows.append(("PF Rule", port, "TCP", action, "All", "macOS pfctl"))
+                rules.append({
+                    "id": rule_id,
+                    "type": "pf",
+                    "name": "PF Rule",
+                    "port": port,
+                    "proto": "TCP",
+                    "action": action,
+                    "iface": "All",
+                    "details": "macOS pfctl",
+                    "raw": line
+                })
+                rule_id += 1
         except Exception:
-            rows.append(("macOS PF", "Any", "ANY", "ACTIVE", "All", "pfctl"))
+            pass
     else:
         # Linux
         if shutil.which("firewall-cmd"):
@@ -148,13 +210,35 @@ def show_firewall_status_table():
             rich_rules = re.findall(r"rule family=.*", res.stdout)
             
             for s in services:
-                rows.append((f"Service: {s}", "Default", "TCP/UDP", "ALLOW", ifaces, f"firewalld ({active_zone})"))
+                rules.append({
+                    "id": rule_id,
+                    "type": "firewalld_service",
+                    "name": f"Service: {s}",
+                    "port": "Default",
+                    "proto": "TCP/UDP",
+                    "action": "ALLOW",
+                    "iface": ifaces,
+                    "details": f"firewalld ({active_zone})",
+                    "raw": s
+                })
+                rule_id += 1
             
             for p in ports:
                 parts = p.split("/")
                 p_num = parts[0]
                 p_proto = parts[1].upper() if len(parts) > 1 else "TCP"
-                rows.append(("Allowed Port", p_num, p_proto, "ALLOW", ifaces, f"firewalld ({active_zone})"))
+                rules.append({
+                    "id": rule_id,
+                    "type": "firewalld_port",
+                    "name": "Allowed Port",
+                    "port": p_num,
+                    "proto": p_proto,
+                    "action": "ALLOW",
+                    "iface": ifaces,
+                    "details": f"firewalld ({active_zone})",
+                    "raw": p
+                })
+                rule_id += 1
             
             for r in rich_rules:
                 comment_match = re.search(r'comment="([^"]+)"', r)
@@ -165,25 +249,41 @@ def show_firewall_status_table():
                 p_proto = proto_match.group(1).upper() if proto_match else "TCP"
                 rule_label = comment_match.group(1) if comment_match else f"Rule (Port {p_val})"
                 act = "BLOCK" if "drop" in r or "reject" in r else "ALLOW"
-                rows.append((rule_label, p_val, p_proto, act, ifaces, f"firewalld ({active_zone})"))
-                
-            if not services and not ports and not rich_rules:
-                rows.append((f"Zone: {active_zone}", "Default", "ANY", "ACTIVE", ifaces, "firewalld"))
+                rules.append({
+                    "id": rule_id,
+                    "type": "firewalld_rich",
+                    "name": rule_label,
+                    "port": p_val,
+                    "proto": p_proto,
+                    "action": act,
+                    "iface": ifaces,
+                    "details": f"firewalld ({active_zone})",
+                    "raw": r
+                })
+                rule_id += 1
 
         elif shutil.which("ufw"):
-            res = subprocess.run(["ufw", "status", "verbose"], capture_output=True, text=True)
+            res = subprocess.run(["ufw", "status", "numbered"], capture_output=True, text=True)
             for line in res.stdout.splitlines():
-                if "ALLOW" in line or "DENY" in line or "REJECT" in line:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        port = parts[0]
-                        act = "ALLOW" if "ALLOW" in parts[1] else "BLOCK"
-                        src = parts[2] if len(parts) > 2 else "Anywhere"
-                        comment_match = re.search(r"#\s*(.*)", line)
-                        rule_label = comment_match.group(1) if comment_match else "UFW Rule"
-                        rows.append((rule_label, port, "TCP/UDP", act, src, "UFW"))
-            if not rows:
-                rows.append(("UFW Firewall", "All Ports", "ANY", "ACTIVE", "Anywhere", "ufw"))
+                match = re.search(r"\[\s*(\d+)\]\s+(.*)", line)
+                if match:
+                    num = match.group(1)
+                    rest = match.group(2)
+                    parts = rest.split()
+                    port = parts[0] if parts else "Any"
+                    act = "ALLOW" if len(parts) > 1 and "ALLOW" in parts[1] else "BLOCK"
+                    rules.append({
+                        "id": int(num),
+                        "type": "ufw",
+                        "name": f"UFW Rule #{num}",
+                        "port": port,
+                        "proto": "TCP/UDP",
+                        "action": act,
+                        "iface": "Anywhere",
+                        "details": "UFW",
+                        "raw": num
+                    })
+                    rule_id += 1
 
         elif shutil.which("nft"):
             res = subprocess.run(["nft", "list", "ruleset"], capture_output=True, text=True)
@@ -193,19 +293,51 @@ def show_firewall_status_table():
                     act = "ALLOW" if "accept" in line else "BLOCK"
                     port_match = re.search(r"dport\s+(\d+)", line)
                     port = port_match.group(1) if port_match else "Any"
-                    rows.append(("NFT Rule", port, "TCP", act, "All", "nftables"))
+                    rules.append({
+                        "id": rule_id,
+                        "type": "nft",
+                        "name": f"NFT Rule #{rule_id}",
+                        "port": port,
+                        "proto": "TCP",
+                        "action": act,
+                        "iface": "All",
+                        "details": "nftables",
+                        "raw": line
+                    })
+                    rule_id += 1
 
         elif shutil.which("iptables"):
-            res = subprocess.run(["iptables", "-L", "INPUT", "-n", "-v"], capture_output=True, text=True)
+            res = subprocess.run(["iptables", "-L", "INPUT", "-n", "-v", "--line-numbers"], capture_output=True, text=True)
             for line in res.stdout.splitlines():
                 if "dpt:" in line:
+                    parts = line.split()
+                    num = parts[0] if parts and parts[0].isdigit() else str(rule_id)
                     act = "ALLOW" if "ACCEPT" in line else "BLOCK"
                     port_match = re.search(r"dpt:(\d+)", line)
                     port = port_match.group(1) if port_match else "Any"
-                    rows.append(("IPTables Rule", port, "TCP", act, "All", "iptables"))
+                    rules.append({
+                        "id": int(num),
+                        "type": "iptables",
+                        "name": f"IPTables Rule #{num}",
+                        "port": port,
+                        "proto": "TCP",
+                        "action": act,
+                        "iface": "All",
+                        "details": "iptables",
+                        "raw": num
+                    })
+                    rule_id += 1
+
+    return rules
+
+
+def show_firewall_status_table():
+    """Parses system firewall status and displays a numbered Table."""
+    rules = parse_firewall_rules()
 
     if HAS_RICH and console:
         table = Table(title="🛡️ Active Firewall Configuration & Rules", border_style="cyan", header_style="bold green")
+        table.add_column("ID", style="bold yellow", justify="center")
         table.add_column("Rule / Service", style="bold white")
         table.add_column("Port", style="bright_yellow")
         table.add_column("Protocol", style="bright_cyan")
@@ -213,23 +345,69 @@ def show_firewall_status_table():
         table.add_column("Interface / Scope", style="magenta")
         table.add_column("Backend / Details", style="dim white")
 
-        for rule, port, proto, act, iface, detail in rows:
+        for r in rules:
+            act = r["action"]
             act_styled = f"[bold green]{act}[/bold green]" if act == "ALLOW" else (f"[bold red]{act}[/bold red]" if act in ("BLOCK", "DENY") else f"[yellow]{act}[/yellow]")
-            table.add_row(rule, port, proto, act_styled, iface, detail)
+            table.add_row(str(r["id"]), r["name"], r["port"], r["proto"], act_styled, r["iface"], r["details"])
+        
+        if not rules:
+            table.add_row("-", "Default Profile", "All Ports", "ANY", "[bold green]ACTIVE[/bold green]", "All", "Active Daemon")
+            
         console.print(table)
     else:
-        # Standard ASCII Table Fallback
         print("\n--- 🛡️ Active Firewall Configuration & Rules ---")
-        fmt = "{:<26} {:<12} {:<10} {:<10} {:<18} {:<20}"
-        print(fmt.format("Rule / Service", "Port", "Protocol", "Action", "Interface / Scope", "Backend / Details"))
-        print("-" * 98)
-        for rule, port, proto, act, iface, detail in rows:
-            print(fmt.format(rule, port, proto, act, iface, detail))
-        print("-" * 98 + "\n")
+        fmt = "{:<4} {:<24} {:<12} {:<10} {:<10} {:<18} {:<20}"
+        print(fmt.format("ID", "Rule / Service", "Port", "Protocol", "Action", "Interface / Scope", "Backend / Details"))
+        print("-" * 102)
+        for r in rules:
+            print(fmt.format(str(r["id"]), r["name"], r["port"], r["proto"], r["action"], r["iface"], r["details"]))
+        print("-" * 102 + "\n")
+
+
+def delete_rule_by_id(target_id: int) -> bool:
+    """Deletes EXACTLY a single firewall rule identified by its table ID number."""
+    rules = parse_firewall_rules()
+    target_rule = None
+    for r in rules:
+        if r["id"] == target_id:
+            target_rule = r
+            break
+            
+    if not target_rule:
+        print(f"Rule ID #{target_id} not found in active rules list.")
+        return False
+
+    rule_type = target_rule["type"]
+    raw = target_rule["raw"]
+    port = target_rule["port"]
+
+    if rule_type == "firewalld_rich":
+        cmd = f"firewall-cmd --remove-rich-rule='{raw}' --permanent && firewall-cmd --reload"
+        res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
+        return res.returncode == 0
+    elif rule_type == "firewalld_port":
+        cmd = f"firewall-cmd --remove-port={raw} --permanent && firewall-cmd --reload"
+        res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
+        return res.returncode == 0
+    elif rule_type == "firewalld_service":
+        cmd = f"firewall-cmd --remove-service={raw} --permanent && firewall-cmd --reload"
+        res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
+        return res.returncode == 0
+    elif rule_type == "ufw":
+        res = subprocess.run(["bash", "-c", f"echo 'y' | ufw delete {raw}"], capture_output=True, text=True)
+        return res.returncode == 0
+    elif rule_type == "iptables":
+        res = subprocess.run(["iptables", "-D", "INPUT", str(raw)], capture_output=True, text=True)
+        return res.returncode == 0
+    elif rule_type == "win":
+        res = subprocess.run(["powershell", "-NoProfile", "-Command", f"Remove-NetFirewallRule -DisplayName '{raw}'"], capture_output=True, text=True)
+        return res.returncode == 0
+
+    return False
 
 
 def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "all", rule_name: str = "") -> bool:
-    """Executes or deletes a firewall rule with action, port, protocol, interface, and rule name."""
+    """Executes a firewall rule with action, port, protocol, interface, and rule name."""
     action = action.lower()
     proto = proto.lower()
     disp_name = rule_name if rule_name else f"Hopit-{action.capitalize()}-{port}"
@@ -253,13 +431,14 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
         # Linux Auto-Detection
         if shutil.which("firewall-cmd"):
             if action in ("delete", "remove"):
+                # If target is a number ID, delete by ID
+                if port.isdigit():
+                    return delete_rule_by_id(int(port))
                 cmd = (
                     f"firewall-cmd --remove-port={port}/tcp --permanent 2>/dev/null; "
                     f"firewall-cmd --remove-port={port}/udp --permanent 2>/dev/null; "
                     f"firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"tcp\" accept' --permanent 2>/dev/null; "
                     f"firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"tcp\" drop' --permanent 2>/dev/null; "
-                    f"firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"udp\" accept' --permanent 2>/dev/null; "
-                    f"firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"udp\" drop' --permanent 2>/dev/null; "
                     f"firewall-cmd --reload"
                 )
             elif action == "allow":
@@ -278,6 +457,8 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
 
         elif shutil.which("ufw"):
             if action in ("delete", "remove"):
+                if port.isdigit():
+                    return delete_rule_by_id(int(port))
                 cmd = f"ufw delete allow {port}/{proto} 2>/dev/null; ufw delete deny {port}/{proto} 2>/dev/null"
             elif action == "allow":
                 comment_opt = f" comment '{rule_name}'" if rule_name else ""
@@ -288,15 +469,10 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
             res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
             return res.returncode == 0
 
-        elif shutil.which("nft"):
-            nft_act = "accept" if action == "allow" else ("drop" if action in ("block", "deny") else "delete")
-            if action in ("delete", "remove"):
-                return True
-            res = subprocess.run(["nft", "add", "rule", "inet", "filter", "input", proto, "dport", port, nft_act], capture_output=True, text=True)
-            return res.returncode == 0
-
         elif shutil.which("iptables"):
             if action in ("delete", "remove"):
+                if port.isdigit():
+                    return delete_rule_by_id(int(port))
                 cmd = f"iptables -D INPUT -p {proto} --dport {port} -j ACCEPT 2>/dev/null; iptables -D INPUT -p {proto} --dport {port} -j DROP 2>/dev/null"
             else:
                 target_act = "ACCEPT" if action == "allow" else "DROP"
@@ -330,15 +506,38 @@ def prompt_confirm(prompt_text: str, default: bool = True) -> bool:
 
 
 def interactive_firewall_setup():
-    """Launches an interactive setup wizard with numbered dropdown menus and rule naming."""
+    """Launches interactive firewall wizard with arrow-key dropdowns and single-rule deletion by ID."""
     if HAS_RICH and console:
-        console.print(Panel("[bold green]Hopit Interactive Firewall Setup Wizard[/bold green]\nConfigure ports, protocols, rule names, and adapters with dropdown menus.", border_style="cyan"))
+        console.print(Panel("[bold green]Hopit Interactive Firewall Wizard[/bold green]\nNavigate options using ↑/↓ arrow keys and press ENTER.", border_style="cyan"))
     else:
-        print("\n--- Hopit Interactive Firewall Setup Wizard ---")
+        print("\n--- Hopit Interactive Firewall Wizard ---")
 
-    action = select_menu("Choose Action", ["allow", "block", "delete", "status"], default_index=0)
+    action = select_dropdown("Choose Action", ["allow", "block", "delete single rule", "status"], default_idx=0)
+    
     if action == "status":
         show_firewall_status_table()
+        return
+
+    if action == "delete single rule":
+        rules = parse_firewall_rules()
+        if not rules:
+            print("No active firewall rules to delete.")
+            return
+        
+        choices = [f"Rule #{r['id']}: {r['name']} (Port {r['port']}/{r['proto']})" for r in rules]
+        selected_choice = select_dropdown("Select Specific Rule to Delete", choices, default_idx=0)
+        
+        # Extract rule ID
+        match = re.search(r"Rule #(\d+)", selected_choice)
+        if match:
+            target_id = int(match.group(1))
+            if prompt_confirm(f"Are you sure you want to delete Rule #{target_id}?", default=True):
+                success = delete_rule_by_id(target_id)
+                if success:
+                    print(f"✓ Successfully deleted Rule #{target_id}!")
+                    show_firewall_status_table()
+                else:
+                    print(f"✗ Failed to delete Rule #{target_id}. Ensure root/sudo privileges.")
         return
 
     port = prompt_ask("Enter port number or range (e.g. 80, 443, 8080)")
@@ -346,14 +545,12 @@ def interactive_firewall_setup():
         print("Port number is required.")
         return
         
-    proto = select_menu("Select Protocol", ["tcp", "udp", "both"], default_index=0)
+    proto = select_dropdown("Select Protocol", ["tcp", "udp", "both"], default_idx=0)
     
     ifaces = get_network_interfaces()
-    iface = select_menu("Select Adapter / Interface", ["all"] + ifaces, default_index=0)
+    iface = select_dropdown("Select Adapter / Interface", ["all"] + ifaces, default_idx=0)
     
-    rule_name = ""
-    if action in ("allow", "block"):
-        rule_name = prompt_ask("Enter custom Rule Name (optional, e.g. Web-Server)", default="")
+    rule_name = prompt_ask("Enter custom Rule Name (optional, e.g. Web-Server)", default="")
     
     name_desc = f" (Name: '{rule_name}')" if rule_name else ""
     print(f"\nRule Summary: {action.upper()} port {port} ({proto.upper()}) on adapter '{iface}'{name_desc}")
@@ -390,12 +587,31 @@ def handle_firewall_cli(args: list[str]):
             interactive_firewall_setup()
             return
             
-        port = args[1]
+        target = args[1]
+        
+        if sub in ("delete", "remove"):
+            if target.isdigit():
+                # Delete by ID or port
+                target_num = int(target)
+                success = delete_rule_by_id(target_num)
+                if not success:
+                    success = run_firewall_rule("delete", target, "tcp", "all", "")
+            else:
+                success = run_firewall_rule("delete", target, "tcp", "all", "")
+                
+            if success:
+                print(f"✓ Successfully deleted rule target '{target}'!")
+                show_firewall_status_table()
+            else:
+                print(f"✗ Failed to delete rule target '{target}'. Ensure root/sudo privileges.")
+            return
+
+        port = target
         proto = args[2].lower() if len(args) > 2 and args[2].lower() in ("tcp", "udp", "both") else "tcp"
         iface = args[3] if len(args) > 3 else "all"
         rule_name = args[4] if len(args) > 4 else ""
         
-        act_name = "delete" if sub in ("delete", "remove") else ("allow" if sub == "allow" else "block")
+        act_name = "allow" if sub == "allow" else "block"
         
         if proto == "both":
             r1 = run_firewall_rule(act_name, port, "tcp", iface, rule_name)
