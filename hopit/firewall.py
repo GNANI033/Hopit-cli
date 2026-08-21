@@ -364,6 +364,9 @@ def show_firewall_status_table():
         print("-" * 102 + "\n")
 
 
+import getpass
+
+
 def ensure_sudo_privileges() -> bool:
     """Ensures host process has root/sudo rights; prompts user for sudo password if unauthenticated."""
     if IS_WINDOWS or (hasattr(os, "geteuid") and os.geteuid() == 0):
@@ -376,14 +379,21 @@ def ensure_sudo_privileges() -> bool:
     except Exception:
         pass
 
-    if HAS_RICH and console:
-        console.print("\n[bold yellow]🔐 Root/sudo privilege required for firewall operations.[/bold yellow]")
-    else:
-        print("\n🔐 Root/sudo privilege required for firewall operations.")
+    try:
+        res = subprocess.run(["sudo", "-v"], stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
+        if res.returncode == 0:
+            return True
+    except Exception:
+        pass
 
     try:
-        res = subprocess.run(["sudo", "-v"])
-        return res.returncode == 0
+        pw = getpass.getpass("🔐 Enter root/sudo password: ")
+        res = subprocess.run(["sudo", "-S", "-v"], input=f"{pw}\n", text=True, capture_output=True)
+        if res.returncode == 0:
+            return True
+        else:
+            print("❌ Sudo authentication failed. Incorrect password.")
+            return False
     except Exception:
         return False
 
