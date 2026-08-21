@@ -364,8 +364,35 @@ def show_firewall_status_table():
         print("-" * 102 + "\n")
 
 
+def ensure_sudo_privileges() -> bool:
+    """Ensures host process has root/sudo rights; prompts user for sudo password if unauthenticated."""
+    if IS_WINDOWS or (hasattr(os, "geteuid") and os.geteuid() == 0):
+        return True
+
+    try:
+        res = subprocess.run(["sudo", "-n", "true"], capture_output=True)
+        if res.returncode == 0:
+            return True
+    except Exception:
+        pass
+
+    if HAS_RICH and console:
+        console.print("\n[bold yellow]🔐 Root/sudo privilege required for firewall operations.[/bold yellow]")
+    else:
+        print("\n🔐 Root/sudo privilege required for firewall operations.")
+
+    try:
+        res = subprocess.run(["sudo", "-v"])
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 def delete_rule_by_id(target_id: int) -> bool:
     """Deletes EXACTLY a single firewall rule identified by its table ID number."""
+    if not ensure_sudo_privileges():
+        return False
+
     rules = parse_firewall_rules()
     target_rule = None
     for r in rules:
@@ -380,24 +407,25 @@ def delete_rule_by_id(target_id: int) -> bool:
     rule_type = target_rule["type"]
     raw = target_rule["raw"]
     port = target_rule["port"]
+    pfx = "sudo " if (not IS_WINDOWS and hasattr(os, "geteuid") and os.geteuid() != 0) else ""
 
     if rule_type == "firewalld_rich":
-        cmd = f"firewall-cmd --remove-rich-rule='{raw}' --permanent && firewall-cmd --reload"
+        cmd = f"{pfx}firewall-cmd --remove-rich-rule='{raw}' --permanent && {pfx}firewall-cmd --reload"
         res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
         return res.returncode == 0
     elif rule_type == "firewalld_port":
-        cmd = f"firewall-cmd --remove-port={raw} --permanent && firewall-cmd --reload"
+        cmd = f"{pfx}firewall-cmd --remove-port={raw} --permanent && {pfx}firewall-cmd --reload"
         res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
         return res.returncode == 0
     elif rule_type == "firewalld_service":
-        cmd = f"firewall-cmd --remove-service={raw} --permanent && firewall-cmd --reload"
+        cmd = f"{pfx}firewall-cmd --remove-service={raw} --permanent && {pfx}firewall-cmd --reload"
         res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
         return res.returncode == 0
     elif rule_type == "ufw":
-        res = subprocess.run(["bash", "-c", f"echo 'y' | ufw delete {raw}"], capture_output=True, text=True)
+        res = subprocess.run(["bash", "-c", f"echo 'y' | {pfx}ufw delete {raw}"], capture_output=True, text=True)
         return res.returncode == 0
     elif rule_type == "iptables":
-        res = subprocess.run(["iptables", "-D", "INPUT", str(raw)], capture_output=True, text=True)
+        res = subprocess.run(["bash", "-c", f"{pfx}iptables -D INPUT {raw}"], capture_output=True, text=True)
         return res.returncode == 0
     elif rule_type == "win":
         res = subprocess.run(["powershell", "-NoProfile", "-Command", f"Remove-NetFirewallRule -DisplayName '{raw}'"], capture_output=True, text=True)
@@ -411,6 +439,11 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
     action = action.lower()
     proto = proto.lower()
     disp_name = rule_name if rule_name else f"Hopit-{action.capitalize()}-{port}"
+
+    if not ensure_sudo_privileges():
+        return False
+
+    pfx = "sudo " if (not IS_WINDOWS and hasattr(os, "geteuid") and os.geteuid() != 0) else ""
 
     if IS_WINDOWS:
         if action in ("delete", "remove"):
@@ -431,26 +464,25 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
         # Linux Auto-Detection
         if shutil.which("firewall-cmd"):
             if action in ("delete", "remove"):
-                # If target is a number ID, delete by ID
                 if port.isdigit():
                     return delete_rule_by_id(int(port))
                 cmd = (
-                    f"firewall-cmd --remove-port={port}/tcp --permanent 2>/dev/null; "
-                    f"firewall-cmd --remove-port={port}/udp --permanent 2>/dev/null; "
-                    f"firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"tcp\" accept' --permanent 2>/dev/null; "
-                    f"firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"tcp\" drop' --permanent 2>/dev/null; "
-                    f"firewall-cmd --reload"
+                    f"{pfx}firewall-cmd --remove-port={port}/tcp --permanent 2>/dev/null; "
+                    f"{pfx}firewall-cmd --remove-port={port}/udp --permanent 2>/dev/null; "
+                    f"{pfx}firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"tcp\" accept' --permanent 2>/dev/null; "
+                    f"{pfx}firewall-cmd --remove-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"tcp\" drop' --permanent 2>/dev/null; "
+                    f"{pfx}firewall-cmd --reload"
                 )
             elif action == "allow":
                 if rule_name:
-                    cmd = f"firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"{proto}\" comment=\"{rule_name}\" accept' --permanent && firewall-cmd --reload"
+                    cmd = f"{pfx}firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"{proto}\" comment=\"{rule_name}\" accept' --permanent && {pfx}firewall-cmd --reload"
                 else:
-                    cmd = f"firewall-cmd --add-port={port}/{proto} --permanent && firewall-cmd --reload"
+                    cmd = f"{pfx}firewall-cmd --add-port={port}/{proto} --permanent && {pfx}firewall-cmd --reload"
             else: # block / deny
                 if rule_name:
-                    cmd = f"firewall-cmd --remove-port={port}/{proto} --permanent 2>/dev/null; firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"{proto}\" comment=\"{rule_name}\" drop' --permanent && firewall-cmd --reload"
+                    cmd = f"{pfx}firewall-cmd --remove-port={port}/{proto} --permanent 2>/dev/null; {pfx}firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"{proto}\" comment=\"{rule_name}\" drop' --permanent && {pfx}firewall-cmd --reload"
                 else:
-                    cmd = f"firewall-cmd --remove-port={port}/{proto} --permanent 2>/dev/null; firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"{proto}\" comment=\"Block-{port}\" drop' --permanent && firewall-cmd --reload"
+                    cmd = f"{pfx}firewall-cmd --remove-port={port}/{proto} --permanent 2>/dev/null; {pfx}firewall-cmd --add-rich-rule='rule family=\"ipv4\" port port=\"{port}\" protocol=\"{proto}\" comment=\"Block-{port}\" drop' --permanent && {pfx}firewall-cmd --reload"
             
             res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
             return res.returncode == 0
@@ -459,13 +491,13 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
             if action in ("delete", "remove"):
                 if port.isdigit():
                     return delete_rule_by_id(int(port))
-                cmd = f"ufw delete allow {port}/{proto} 2>/dev/null; ufw delete deny {port}/{proto} 2>/dev/null"
+                cmd = f"{pfx}ufw delete allow {port}/{proto} 2>/dev/null; {pfx}ufw delete deny {port}/{proto} 2>/dev/null"
             elif action == "allow":
                 comment_opt = f" comment '{rule_name}'" if rule_name else ""
-                cmd = f"ufw allow {port}/{proto}{comment_opt}"
+                cmd = f"{pfx}ufw allow {port}/{proto}{comment_opt}"
             else:
                 comment_opt = f" comment '{rule_name}'" if rule_name else ""
-                cmd = f"ufw deny {port}/{proto}{comment_opt}"
+                cmd = f"{pfx}ufw deny {port}/{proto}{comment_opt}"
             res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
             return res.returncode == 0
 
@@ -473,10 +505,10 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
             if action in ("delete", "remove"):
                 if port.isdigit():
                     return delete_rule_by_id(int(port))
-                cmd = f"iptables -D INPUT -p {proto} --dport {port} -j ACCEPT 2>/dev/null; iptables -D INPUT -p {proto} --dport {port} -j DROP 2>/dev/null"
+                cmd = f"{pfx}iptables -D INPUT -p {proto} --dport {port} -j ACCEPT 2>/dev/null; {pfx}iptables -D INPUT -p {proto} --dport {port} -j DROP 2>/dev/null"
             else:
                 target_act = "ACCEPT" if action == "allow" else "DROP"
-                cmd = f"iptables -A INPUT -p {proto} --dport {port} -j {target_act}"
+                cmd = f"{pfx}iptables -A INPUT -p {proto} --dport {port} -j {target_act}"
             res = subprocess.run(["bash", "-c", cmd], capture_output=True, text=True)
             return res.returncode == 0
 
