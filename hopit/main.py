@@ -48,11 +48,13 @@ from hopit.loaders import (
     load_adapters,
     load_users,
     load_groups,
+    load_block_devices,
+    load_mount_points,
     BackgroundNames,
     MANAGER_PKG,
     MANAGER_DISPLAY_NAME,
 )
-from hopit.commands import build_commands, BUILTIN_DESCRIPTIONS, ip_cmd
+from hopit.commands import build_commands, BUILTIN_DESCRIPTIONS, ip_cmd, disk_cmd
 from hopit.ui import (
     LazyCompleter,
     resolve_command,
@@ -1624,6 +1626,214 @@ def execute_line(
             os.environ["PATH"] = bin_dir + os.pathsep + os.pathsep.join(path_parts)
             console.print(f"[bold green]Activated virtual environment:[/bold green] {env_path}")
         return True
+
+    # ── Disk interactive wizard ───────────────────────────────────────────
+    if name in ("disk", "drive"):
+        if not rest:
+            console.print("[yellow]Usage: disk [list|usage|mount|unmount|check][/yellow]")
+            return True
+
+        sub_token = rest[0].lower()
+        valid_subs = ["list", "usage", "mount", "unmount", "check"]
+        subcmd, matches = resolve_subcommand(sub_token, valid_subs)
+        if not subcmd:
+            if len(matches) > 1:
+                console.print(f"[red]Ambiguous disk subcommand '{sub_token}'. Candidates: {', '.join(matches)}[/red]")
+            else:
+                console.print(f"[red]Unknown disk subcommand '{sub_token}'. Supported: {', '.join(valid_subs)}[/red]")
+            return True
+
+        subargs = rest[1:]
+        current_style = create_prompt_style(get_active_theme())
+
+        if subcmd == "list":
+            # No argument needed — fall through to normal dispatch
+            pass
+
+        elif subcmd == "usage":
+            if not subargs:
+                # No path given — run for whole system (df -h)
+                subargs = []
+            # Execute directly
+            real_cmd = with_privilege(disk_cmd("usage " + " ".join(subargs)), False)
+            if not real_cmd:
+                console.print("[red]Could not build disk usage command.[/red]")
+                return True
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="usage", show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]disk usage: {e}[/red]")
+            return True
+
+        elif subcmd == "check":
+            # Require a target device or mount point
+            if not subargs:
+                console.print("[bold cyan]\n💾 Disk Check — Select Target[/bold cyan]")
+                # Build dropdown: mounted filesystems + raw block devices
+                candidates = []
+                for mnt, desc in load_mount_points():
+                    candidates.append((mnt, f"[mounted]  {desc}"))
+                for dev, desc in load_block_devices():
+                    candidates.append((dev, f"[device]   {desc}"))
+                if not candidates:
+                    console.print("[yellow]No block devices or mount points found. Enter device path manually:[/yellow]")
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Target (e.g. /dev/sda1 or /mnt): ")],
+                            completer=DummyCompleter(), style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                    if not target:
+                        console.print("[red]No target specified. Aborting.[/red]")
+                        return True
+                    subargs = [target]
+                else:
+                    dev_completer = WordCompleter([c[0] for c in candidates], ignore_case=True)
+                    console.print("[dim]Tab to browse devices/mount points, Enter to select[/dim]")
+                    for dev, desc in candidates:
+                        console.print(f"  [cyan]{dev:<20}[/cyan]  [dim]{desc}[/dim]")
+                    console.print()
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Target device or mount point: ")],
+                            completer=dev_completer, style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                    if not target:
+                        console.print("[red]No target selected. Aborting.[/red]")
+                        return True
+                    subargs = [target]
+            real_cmd = with_privilege(disk_cmd("check " + " ".join(subargs)), True)
+            if not real_cmd:
+                console.print("[red]Could not build fsck command for this platform.[/red]")
+                return True
+            try:
+                subprocess.run(real_cmd)
+            except FileNotFoundError:
+                console.print(f"[red]'{real_cmd[0]}' not found on this system.[/red]")
+            except KeyboardInterrupt:
+                console.print("\n[dim]Stopped.[/dim]")
+            return True
+
+        elif subcmd == "unmount":
+            if not subargs:
+                console.print("[bold cyan]\n💿 Unmount — Select Volume[/bold cyan]")
+                candidates = load_mount_points()
+                if not candidates:
+                    console.print("[yellow]No mounted volumes found. Enter mount point manually:[/yellow]")
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Mount point to unmount: ")],
+                            completer=DummyCompleter(), style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                    if not target:
+                        console.print("[red]No target specified. Aborting.[/red]")
+                        return True
+                    subargs = [target]
+                else:
+                    mnt_completer = WordCompleter([m for m, _ in candidates], ignore_case=True)
+                    console.print("[dim]Tab to browse, Enter to select[/dim]")
+                    for mnt, desc in candidates:
+                        console.print(f"  [cyan]{mnt:<30}[/cyan]  [dim]{desc}[/dim]")
+                    console.print()
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Mount point to unmount: ")],
+                            completer=mnt_completer, style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                    if not target:
+                        console.print("[red]No target selected. Aborting.[/red]")
+                        return True
+                    subargs = [target]
+            real_cmd = with_privilege(disk_cmd("unmount " + " ".join(subargs)), True)
+            if not real_cmd:
+                console.print("[red]Could not build unmount command.[/red]")
+                return True
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="unmount", show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]disk unmount: {e}[/red]")
+            return True
+
+        elif subcmd == "mount":
+            if len(subargs) < 2:
+                # Need device and mount point — prompt interactively
+                console.print("[bold cyan]\n💾 Mount — Step 1: Select Device[/bold cyan]")
+                devs = load_block_devices()
+                if not devs:
+                    console.print("[yellow]No block devices found. Enter device path manually:[/yellow]")
+                    try:
+                        device = prompt(
+                            [("class:prompt", "Device (e.g. /dev/sdb1): ")],
+                            completer=DummyCompleter(), style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                else:
+                    dev_completer = WordCompleter([d for d, _ in devs], ignore_case=True)
+                    console.print("[dim]Tab to browse block devices, Enter to select[/dim]")
+                    for dev, desc in devs:
+                        console.print(f"  [cyan]{dev:<20}[/cyan]  [dim]{desc}[/dim]")
+                    console.print()
+                    # Use the first subarg if already provided, else prompt
+                    if subargs:
+                        device = subargs[0]
+                    else:
+                        try:
+                            device = prompt(
+                                [("class:prompt", "Device to mount: ")],
+                                completer=dev_completer, style=current_style
+                            ).strip()
+                        except KeyboardInterrupt:
+                            console.print("\n[dim]Cancelled.[/dim]")
+                            return True
+                if not device:
+                    console.print("[red]No device selected. Aborting.[/red]")
+                    return True
+
+                console.print("[bold cyan]\n📁 Mount — Step 2: Select Mount Point Directory[/bold cyan]")
+                console.print("[dim]Common locations: /mnt, /media, /run/media[/dim]")
+                path_completer = WordCompleter(["/mnt/", "/media/", "/run/media/", "/tmp/"], ignore_case=True)
+                try:
+                    mount_point = prompt(
+                        [("class:prompt", "Mount point directory: ")],
+                        completer=path_completer, style=current_style
+                    ).strip()
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Cancelled.[/dim]")
+                    return True
+                if not mount_point:
+                    console.print("[red]No mount point specified. Aborting.[/red]")
+                    return True
+                subargs = [device, mount_point]
+
+            real_cmd = with_privilege(disk_cmd("mount " + " ".join(subargs)), True)
+            if not real_cmd:
+                console.print("[red]Could not build mount command for this platform.[/red]")
+                return True
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="mount", show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]disk mount: {e}[/red]")
+            return True
+
+        # subcmd == 'list': fall through to generic dispatch below
+        # (disk list needs no args and uses the commands dict runner)
+        rest = [subcmd] + subargs
 
     if name == "netconfig":
         if not rest:

@@ -329,13 +329,54 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
     elif cmd in ("disk", "drive"):
         if len(words) == 2:
             disk_subs = {
-                "list": "List physical drives and volumes",
-                "usage": "Check disk space utilization",
-                "mount": "Mount a drive or partition",
+                "list":    "List physical drives and volumes",
+                "usage":   "Check disk space utilization",
+                "mount":   "Mount a drive or partition",
                 "unmount": "Unmount a mounted volume",
-                "check": "Perform filesystem integrity check",
+                "check":   "Perform filesystem integrity check",
             }
             return [(k, v) for k, v in disk_subs.items()]
+
+        sub = words[1].lower()
+        word = words[-1]
+
+        if sub == "usage":
+            # disk usage maps to 'df -h <path>' — only directories are meaningful here
+            from hopit.loaders import load_path_entries
+            paths = load_path_entries(word)
+            return [(p, "📁 folder") for p in paths if p.endswith("/") or os.path.isdir(p)]
+
+        elif sub == "check":
+            # Show mounted filesystems + block devices for fsck/chkdsk
+            from hopit.loaders import load_mount_points, load_block_devices
+            if len(words) == 3:
+                candidates = []
+                # First: mounted filesystems (most useful for check)
+                for mnt, desc in load_mount_points():
+                    candidates.append((mnt, f"🔧 {desc}"))
+                # Also include raw block devices
+                for dev, desc in load_block_devices():
+                    candidates.append((dev, f"💾 {desc}"))
+                return candidates
+            return []
+
+        elif sub == "unmount":
+            # Show only currently mounted filesystems
+            from hopit.loaders import load_mount_points
+            if len(words) == 3:
+                return [(mnt, f"💿 {desc}") for mnt, desc in load_mount_points()]
+            return []
+
+        elif sub == "mount":
+            from hopit.loaders import load_block_devices, load_path_entries
+            if len(words) == 3:
+                # <device> arg — show block devices
+                return [(dev, f"💾 {desc}") for dev, desc in load_block_devices()]
+            elif len(words) == 4:
+                # <target> (mount point) arg — show directory navigation
+                paths = load_path_entries(word)
+                return [(p, "📁 mount target") for p in paths if p.endswith("/") or os.path.isdir(p)]
+            return []
 
     elif cmd in ("archive", "compress"):
         if len(words) == 2:

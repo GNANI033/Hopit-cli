@@ -299,6 +299,136 @@ def load_path_entries(prefix: str = "") -> list[str]:
         return []
 
 
+def load_block_devices() -> list[tuple[str, str]]:
+    """Return a list of (device_path, description) tuples for block devices/partitions.
+
+    Returns entries like ('/dev/sda', 'disk 500G') and ('/dev/sda1', 'part 50G / ext4').
+    On Windows returns drive letter volumes. On macOS returns diskutil identifiers.
+    """
+    if IS_WINDOWS:
+        lines = _run_lines(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-Volume | Where-Object {$_.DriveLetter} | "
+             "Select-Object @{N='Dev';E={$_.DriveLetter+':'}}, FileSystem, Size | "
+             "Format-Table -HideTableHeaders -AutoSize"],
+            timeout=5,
+        )
+        result = []
+        for line in lines:
+            line = line.strip()
+            if line:
+                parts = line.split()
+                dev = parts[0] if parts else line
+                meta = " ".join(parts[1:]) if len(parts) > 1 else "volume"
+                result.append((dev, meta))
+        return result
+
+    if IS_MACOS:
+        lines = _run_lines(["diskutil", "list", "-plist"], timeout=5)
+        # Simpler approach: just list /dev/disk* identifiers
+        try:
+            import glob
+            devs = sorted(glob.glob("/dev/disk*"))
+        except Exception:
+            devs = []
+        return [(d, "disk/partition") for d in devs if not d.endswith("s0")]
+
+    # Linux: use lsblk for rich info
+    result = []
+    if shutil.which("lsblk"):
+        lines = _run_lines(
+            ["lsblk", "-o", "NAME,TYPE,SIZE,MOUNTPOINT,FSTYPE", "-rn", "--noheadings"],
+            timeout=4,
+        )
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            name, typ, size = parts[0], parts[1], parts[2]
+            mount = parts[3] if len(parts) > 3 else ""
+            fstype = parts[4] if len(parts) > 4 else ""
+            dev = f"/dev/{name}"
+            meta_parts = [typ, size]
+            if fstype:
+                meta_parts.append(fstype)
+            if mount:
+                meta_parts.append(f"→ {mount}")
+            result.append((dev, "  ".join(meta_parts)))
+    else:
+        # Fallback: /proc/partitions
+        try:
+            with open("/proc/partitions") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) == 4 and parts[3] != "name":
+                        name = parts[3]
+                        size_kb = int(parts[2]) if parts[2].isdigit() else 0
+                        size_str = f"{size_kb // 1024}M" if size_kb < 1024 * 1024 else f"{size_kb // 1024 // 1024}G"
+                        result.append((f"/dev/{name}", f"part {size_str}"))
+        except Exception:
+            pass
+    return result
+
+
+def load_mount_points() -> list[tuple[str, str]]:
+    """Return currently mounted filesystems as (mountpoint, description) tuples.
+
+    Used for unmount/check dropdown completions.
+    """
+    if IS_WINDOWS:
+        lines = _run_lines(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-PSDrive -PSProvider FileSystem | "
+             "Select-Object Name,Root | Format-Table -HideTableHeaders"],
+            timeout=5,
+        )
+        result = []
+        for line in lines:
+            line = line.strip()
+            if line:
+                parts = line.split()
+                if parts:
+                    root = parts[1] if len(parts) > 1 else parts[0] + ":\\"
+                    result.append((root, "mounted drive"))
+        return result
+
+    if IS_MACOS:
+        lines = _run_lines(["mount"], timeout=4)
+        result = []
+        for line in lines:
+            parts = line.split(" on ")
+            if len(parts) == 2:
+                dev = parts[0].strip()
+                rest = parts[1].strip()
+                mnt = rest.split(" (")[0].strip()
+                result.append((mnt, f"from {dev}"))
+        return result
+
+    # Linux: parse /proc/mounts
+    result = []
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3:
+                    dev, mnt, fstype = parts[0], parts[1], parts[2]
+                    if fstype in ("tmpfs", "devtmpfs", "sysfs", "proc", "cgroup",
+                                  "cgroup2", "devpts", "mqueue", "hugetlbfs",
+                                  "debugfs", "securityfs", "fusectl", "bpf",
+                                  "tracefs", "pstore", "efivarfs", "configfs",
+                                  "ramfs", "overlay", "selinuxfs", "autofs",
+                                  "rpc_pipefs", "nsfs", "sunrpc", "nfsd",
+                                  "fuse.gvfsd-fuse", "fuse.portal"):
+                        continue
+                    result.append((mnt, f"from {dev}  [{fstype}]"))
+    except Exception:
+        pass
+    return result
+
+
 def load_adapters() -> list[str]:
     """List network adapters on the system."""
     if IS_WINDOWS:
