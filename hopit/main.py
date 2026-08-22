@@ -207,12 +207,18 @@ def show_command_help(cmd_name: str, commands: dict):
         desc = cmd.desc
         sudo_req = cmd.needs_sudo
         
-        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup"):
+        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup", "enter", "exit"):
             show_context_help([cmd_name], commands)
             return
 
         # Build usage syntax based on properties
-        if cmd_name == "git":
+        if cmd_name == "create":
+            usage = "create [folder|file|venv] <path>"
+        elif cmd_name == "enter":
+            usage = "enter venv <path>"
+        elif cmd_name == "exit":
+            usage = "exit [venv]"
+        elif cmd_name == "git":
             usage = "git <subcommand> [args...]"
         elif cmd_name == "sqlite":
             usage = "sqlite <database_file> [SQL query]"
@@ -303,11 +309,19 @@ def show_context_help(words: list[str], commands: dict):
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "create":
-        matched_sub, _ = resolve_subcommand(subcmd, ["folder", "file"])
+        matched_sub, _ = resolve_subcommand(subcmd, ["folder", "file", "venv"])
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "find":
         matched_sub, _ = resolve_subcommand(subcmd, ["file", "text"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "enter":
+        matched_sub, _ = resolve_subcommand(subcmd, ["venv"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "exit":
+        matched_sub, _ = resolve_subcommand(subcmd, ["venv"])
         if matched_sub:
             subcmd = matched_sub
 
@@ -550,6 +564,7 @@ def show_context_help(words: list[str], commands: dict):
             table = Table(show_header=False, box=None, padding=(0, 2))
             table.add_row("[green]folder[/green]", "Create a new directory (including parent directories)")
             table.add_row("[green]file[/green]", "Create a new empty file")
+            table.add_row("[green]venv[/green]", "Create a new Python virtual environment")
             console.print(Panel(table, title=title, border_style="cyan", expand=False))
         elif subcmd == "folder":
             if not rest:
@@ -561,8 +576,13 @@ def show_context_help(words: list[str], commands: dict):
                 console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to create", title=title, border_style="cyan", expand=False))
             else:
                 console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "venv":
+            if not rest:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the path where the new virtual environment should be created", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         else:
-            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected 'folder' or 'file'.", title=title, border_style="cyan", expand=False))
+            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected 'folder', 'file', or 'venv'.", title=title, border_style="cyan", expand=False))
         return
 
     if resolved == "show":
@@ -808,6 +828,27 @@ def show_context_help(words: list[str], commands: dict):
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return
 
+    if resolved == "enter":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]venv <path>[/green]", "Enter (activate) a Python virtual environment")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif subcmd == "venv":
+            if not rest:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the path of the virtual environment to enter/activate", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "exit":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]venv[/green]", "Exit (deactivate) the current Python virtual environment")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif subcmd == "venv":
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
     show_command_help(resolved, commands)
 
 
@@ -881,6 +922,8 @@ def execute_line(
     head, *rest = tokens
 
     name, ambiguous = resolve_command(all_names, head)
+    if head.lower() in ("exit", "quit"):
+        name = head.lower()
 
     if name is not None:
         intended_words = [name]
@@ -912,7 +955,25 @@ def execute_line(
                 intended_words.extend(rest)
         elif name == "create" and rest:
             sub_token = rest[0].lower()
-            valid_subs = ["folder", "file"]
+            valid_subs = ["folder", "file", "venv"]
+            subcmd, _ = resolve_subcommand(sub_token, valid_subs)
+            if subcmd:
+                intended_words.append(subcmd)
+                intended_words.extend(rest[1:])
+            else:
+                intended_words.extend(rest)
+        elif name == "enter" and rest:
+            sub_token = rest[0].lower()
+            valid_subs = ["venv"]
+            subcmd, _ = resolve_subcommand(sub_token, valid_subs)
+            if subcmd:
+                intended_words.append(subcmd)
+                intended_words.extend(rest[1:])
+            else:
+                intended_words.extend(rest)
+        elif name == "exit" and rest:
+            sub_token = rest[0].lower()
+            valid_subs = ["venv"]
             subcmd, _ = resolve_subcommand(sub_token, valid_subs)
             if subcmd:
                 intended_words.append(subcmd)
@@ -970,7 +1031,24 @@ def execute_line(
         console.clear()
         return True
     if name in ("exit", "quit"):
+        if name == "exit" and rest:
+            # Cisco-IOS style: resolve prefix — "v", "ve", "ven", "venv" all match
+            matched_sub, _ = resolve_subcommand(rest[0].lower(), ["venv"])
+            if matched_sub == "venv":
+                if "VIRTUAL_ENV" not in os.environ:
+                    console.print("[yellow]No virtual environment is currently active.[/yellow]")
+                    return True
+                env_path = os.environ.pop("VIRTUAL_ENV")
+                bin_dir = os.path.join(env_path, "Scripts" if IS_WINDOWS else "bin")
+                path_parts = os.environ.get("PATH", "").split(os.pathsep)
+                if bin_dir in path_parts:
+                    path_parts.remove(bin_dir)
+                    os.environ["PATH"] = os.pathsep.join(path_parts)
+                console.print(f"[bold yellow]Deactivated virtual environment:[/bold yellow] {env_path}")
+                return True
+            # Unknown argument — treat as exit hopit-cli
         return False
+
 
     if name in ("pwd", "whereami"):
         console.print(f"[green]📁 {os.getcwd()}[/green]")
@@ -1277,16 +1355,16 @@ def execute_line(
     if name == "create":
         if not rest:
             console.print("[cyan]Enter name to create here or full path[/cyan]")
-            console.print("[yellow]Usage: create [folder|file] <path>[/yellow]")
+            console.print("[yellow]Usage: create [folder|file|venv] <path>[/yellow]")
             return True
         sub_token = rest[0].lower()
-        valid_subs = ["folder", "file"]
+        valid_subs = ["folder", "file", "venv"]
         sub, matches = resolve_subcommand(sub_token, valid_subs)
         if not sub:
             if len(matches) > 1:
                 console.print(f"[red]Ambiguous option '{sub_token}'. Candidates: {', '.join(matches)}[/red]")
             else:
-                console.print(f"[red]Unknown option '{sub_token}'. Expected 'folder' or 'file'.[/red]")
+                console.print(f"[red]Unknown option '{sub_token}'. Expected 'folder', 'file', or 'venv'.[/red]")
             return True
         if len(rest) < 2:
             console.print("[cyan]Enter name to create here or full path[/cyan]")
@@ -1312,6 +1390,81 @@ def execute_line(
                     console.print(f"[green]Created file:[/green] {target_path}")
             except Exception as e:
                 console.print(f"[red]create file: {e}[/red]")
+        elif sub == "venv":
+            env_path = os.path.abspath(target_path)
+            parent_dir = os.path.dirname(env_path) or "."
+
+            # --- Pre-flight checks ---
+            if os.path.isfile(env_path):
+                console.print(
+                    f"[red]Cannot create virtual environment:[/red] "
+                    f"[yellow]'{env_path}'[/yellow] already exists as a [bold]file[/bold]. "
+                    f"Remove or rename it first."
+                )
+                return True
+            if os.path.isdir(env_path) and os.path.isfile(os.path.join(env_path, "pyvenv.cfg")):
+                console.print(
+                    f"[yellow]'{env_path}' is already a virtual environment.[/yellow] "
+                    f"Use [green]enter venv {env_path}[/green] to activate it."
+                )
+                return True
+            if not os.access(parent_dir, os.W_OK):
+                console.print(
+                    f"[red]Cannot create virtual environment:[/red] "
+                    f"No write permission to [yellow]'{parent_dir}'[/yellow]."
+                )
+                return True
+
+            # --- Create ---
+            real_cmd = [sys.executable, "-m", "venv", env_path]
+            console.print(f"[cyan]Creating virtual environment at '{env_path}'...[/cyan]")
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                if proc.returncode == 0:
+                    console.print(f"[bold green]✓ Virtual environment created:[/bold green] {env_path}")
+                    console.print(f"  Run [green]enter venv {env_path}[/green] to activate it.")
+                else:
+                    err = (proc.stderr or proc.stdout or "").strip()
+                    console.print(f"[red]Failed to create virtual environment.[/red]")
+                    if err:
+                        console.print(f"[dim]{err}[/dim]")
+                    if "ensurepip" in err or "pip" in err.lower():
+                        console.print("[yellow]Tip:[/yellow] Try installing python3-venv: [green]sudo dnf install python3-venv[/green]")
+            except Exception as e:
+                console.print(f"[red]Error creating virtual environment: {e}[/red]")
+        return True
+
+    if name == "enter":
+        if not rest:
+            console.print("[yellow]Usage: enter venv <path>[/yellow]")
+            return True
+        sub_token = rest[0].lower()
+        subargs = rest[1:]
+        valid_subs = ["venv"]
+        subcmd, matches = resolve_subcommand(sub_token, valid_subs)
+        if not subcmd:
+            console.print(f"[red]Unknown enter subcommand '{sub_token}'. Supported: venv[/red]")
+            return True
+        if subcmd == "venv":
+            if not subargs:
+                console.print("[yellow]Usage: enter venv <env_path>[/yellow]")
+                return True
+            env_path = os.path.abspath(os.path.expanduser(subargs[0]))
+            if not os.path.isdir(env_path):
+                console.print(f"[red]Virtual environment directory '{env_path}' does not exist.[/red]")
+                return True
+            bin_dir = os.path.join(env_path, "Scripts" if IS_WINDOWS else "bin")
+            if not os.path.isdir(bin_dir):
+                console.print(f"[red]Invalid virtual environment (bin/Scripts directory not found under '{env_path}').[/red]")
+                return True
+            # Prepend bin_dir to PATH and set VIRTUAL_ENV
+            os.environ["VIRTUAL_ENV"] = env_path
+            # To avoid duplicates in PATH:
+            path_parts = os.environ.get("PATH", "").split(os.pathsep)
+            if bin_dir in path_parts:
+                path_parts.remove(bin_dir)
+            os.environ["PATH"] = bin_dir + os.pathsep + os.pathsep.join(path_parts)
+            console.print(f"[bold green]Activated virtual environment:[/bold green] {env_path}")
         return True
 
     if name == "netconfig":
@@ -1515,8 +1668,10 @@ def main():
             end_sep  = sep if use_powerline else ""
             git_icon = " " if use_powerline else ""
 
+            venv_path = os.environ.get("VIRTUAL_ENV")
+            venv_suffix = f" ({os.path.basename(venv_path)})" if venv_path else ""
             prompt_fragments = [
-                ("class:hopit", " hopit-cli "),
+                ("class:hopit", f" hopit-cli{venv_suffix} "),
                 ("class:hopit_sep", sep),
                 ("class:user", f" {user} "),
                 ("class:user_sep", sep),

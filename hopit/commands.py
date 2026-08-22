@@ -31,7 +31,7 @@ class Command:
 BUILTIN_DESCRIPTIONS = {
     "help": "Show this help",
     "clear": "Clear the screen",
-    "exit": "Leave hopit-cli",
+    "exit": "Leave hopit-cli, or deactivate environment: exit [venv]",
     "quit": "Leave hopit-cli",
 }
 
@@ -701,8 +701,15 @@ def build_commands(manager: str | None, names: dict) -> dict:
         ),
         "create": Command(
             run=lambda _: [],  # handled specially in main loop
-            desc="Create a new folder or file: create [folder|file] <path>",
+            desc="Create a new folder, file, or virtual environment: create [folder|file|venv] <path>",
             needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "enter": Command(
+            run=lambda _: [],  # handled specially in main loop
+            desc="Enter (activate) a context or virtual environment: enter venv <path>",
+            needs_arg=False,
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),
@@ -786,6 +793,18 @@ def build_commands(manager: str | None, names: dict) -> dict:
             needs_arg=True,
             mode="stream",
         ),
+        "route": Command(
+            run=lambda arg: (["route", "print"] + shlex.split(arg)) if IS_WINDOWS else ((["netstat", "-rn"] + shlex.split(arg)) if IS_MACOS else (["ip", "route"] + shlex.split(arg))),
+            desc="View or configure the system network routing table: route [args]",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "arp": Command(
+            run=lambda arg: (["arp", "-a"] + shlex.split(arg)) if IS_WINDOWS else ((["arp", "-an"] + shlex.split(arg)) if IS_MACOS else (["ip", "neigh"] + shlex.split(arg))),
+            desc="View and manage the system Address Resolution Protocol (ARP) table: arp [args]",
+            needs_arg=False,
+            mode="capture",
+        ),
         "netstat": Command(
             run=lambda arg: ["netstat"] + shlex.split(arg) if arg else (["netstat", "-ano"] if IS_WINDOWS else ["netstat", "-an"]),
             desc="Display network connections and protocol statistics: netstat [args]",
@@ -795,6 +814,24 @@ def build_commands(manager: str | None, names: dict) -> dict:
         "connections": Command(
             run=lambda _: [sys.executable, "-m", "hopit.connections"],
             desc="Display active network connections in a beautiful table",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "hostname": Command(
+            run=lambda arg: (["powershell", "-Command", f"Rename-Computer -NewName '{arg}'"] if IS_WINDOWS else ["hostname", arg]) if arg else ["hostname"],
+            desc="Show or change the system hostname: hostname [new_name]",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "gateway": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.gateway"] + shlex.split(arg),
+            desc="Display system default gateway IP address",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "mac": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.mac"] + shlex.split(arg),
+            desc="Display network MAC addresses",
             needs_arg=False,
             mode="capture",
         ),

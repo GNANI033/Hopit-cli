@@ -355,6 +355,7 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
             create_subs = {
                 "folder": "Create a new directory (including parent directories)",
                 "file": "Create a new empty file",
+                "venv": "Create a new Python virtual environment",
             }
             return [(k, v) for k, v in create_subs.items()]
         elif len(words) >= 3:
@@ -362,6 +363,27 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
             word = words[-1]
             paths = load_path_entries(word)
             return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+
+    elif cmd == "enter":
+        if len(words) == 2:
+            return [("venv", "Enter (activate) a Python virtual environment")]
+        elif len(words) >= 3 and words[1].lower() == "venv":
+            from hopit.loaders import load_path_entries
+            word = words[-1]
+            paths = load_path_entries(word)
+            result = []
+            for p in paths:
+                if not os.path.isdir(p):
+                    continue  # skip files — venvs are always directories
+                is_venv = os.path.isfile(os.path.join(p, "pyvenv.cfg"))
+                meta = "🐍 venv" if is_venv else "📁 folder"
+                result.append((p, meta))
+            return result
+
+    elif cmd == "exit":
+        if len(words) == 2:
+            return [("venv", "Exit (deactivate) the current Python virtual environment")]
+
 
     elif cmd == "show":
         if len(words) == 2:
@@ -498,7 +520,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup"):
+            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []
@@ -512,12 +534,16 @@ class LazyCompleter(Completer):
                 return
             elif resolved == "create":
                 if len(words) >= 3:
-                    yield Completion(
-                        "",
-                        start_position=0,
-                        display="💡 Enter name to create here or full path",
-                        display_meta="info"
-                    )
+                    sub = words[1].lower() if len(words) > 1 else ""
+                    if sub not in ("folder", "file", "venv"):
+                        pass
+                    else:
+                        yield Completion(
+                            "",
+                            start_position=0,
+                            display="💡 Enter name to create here or full path",
+                            display_meta="info"
+                        )
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []
@@ -656,6 +682,10 @@ def print_help(commands: dict, manager: str | None):
         "create": [
             ("folder", "Create a folder (mkdir -p): create folder <path>"),
             ("file", "Create an empty file: create file <path>"),
+            ("venv", "Create a Python virtual environment: create venv <path>"),
+        ],
+        "enter": [
+            ("venv", "Enter (activate) a virtual environment: enter venv <path>"),
         ],
         "show": [
             ("file", "Show content of a file: show file <path>"),
@@ -729,6 +759,9 @@ def print_help(commands: dict, manager: str | None):
         "📂 File & Directory Management": [
             "list", "cd", "back", "open", "create", "mkdir", "copy", "move", "remove", "show", "archive",
             "pwd", "touch", "cat", "head", "tail", "less", "tree", "find", "grep", "search", "disk"
+        ],
+        "🐍 Python Virtual Environments": [
+            "enter",
         ],
         "⚙️ Process & System Resources": [
             "processes", "process", "top", "kill", "pkill", "killport", "sysinfo", "resources", "sqlite",

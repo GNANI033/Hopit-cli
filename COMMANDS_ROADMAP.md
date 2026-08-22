@@ -59,3 +59,11 @@ This document records the complete status of commands in **Hopit-CLI**. It provi
 | `pkill <name>` | Terminate processes by name pattern matching. | Stream |
 | `top` | Live-updating top-20 CPU consuming processes (Ctrl-C to exit). | Stream |
 | `resources` | Live-updating system resource dashboard (CPU, RAM, Disks, Network). | Capture |
+
+### D. Python Virtual Environment Commands
+
+| Syntax | Description | Mode |
+| :--- | :--- | :--- |
+| `venv create <path>` | Create a new Python virtual environment at the specified path. | Capture |
+| `venv enter <path>` / `venv activate <path>` | Enter (activate) an existing Python virtual environment, updating shell path & prompt. | Capture |
+| `venv exit` / `venv deactivate` | Exit (deactivate) the current Python virtual environment. | Capture |

@@ -195,8 +195,8 @@ class TestUniversalCommands(unittest.TestCase):
             # Test history expansion
             class MockHistory:
                 def __init__(self):
-                    self._loaded_strings = ["show h"]
-                    self._storage = ["show h"]
+                    self._loaded_strings = ["show hi"]
+                    self._storage = ["show hi"]
                 def get_strings(self):
                     return self._loaded_strings
             class MockSession:
@@ -204,7 +204,7 @@ class TestUniversalCommands(unittest.TestCase):
                     self.history = MockHistory()
 
             mock_sess = MockSession()
-            success = execute_line("show h", "/bin/bash", {}, all_names, cmds, None, mock_sess)
+            success = execute_line("show hi", "/bin/bash", {}, all_names, cmds, None, mock_sess)
             self.assertTrue(success)
             self.assertEqual(mock_sess.history._loaded_strings[0], "show history")
             self.assertEqual(mock_sess.history._storage[-1], "show history")
@@ -289,6 +289,76 @@ class TestUniversalCommands(unittest.TestCase):
             # Verify that no file was written outside the extraction directory
             outside_file = os.path.join(temp_dir, "outside_file.txt")
             self.assertFalse(os.path.exists(outside_file))
+
+        finally:
+            shutil.rmtree(temp_dir)
+
+    def test_venv_command(self):
+        from unittest.mock import patch, MagicMock
+        import tempfile
+        import shutil
+        import os
+        from hopit.main import execute_line
+        from hopit.commands import build_commands
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            # Setup mock command environment
+            names = {
+                "service": lambda: [],
+                "installed_pkg": lambda: [],
+                "available_pkg": lambda prefix="": [],
+                "path": lambda word="": [],
+                "adapter": lambda: [],
+                "user": lambda: [],
+                "group": lambda: [],
+            }
+            cmds = build_commands(None, names)
+            all_names = list(cmds.keys())
+
+            # Test create venv (mocks subprocess.run)
+            with patch("subprocess.run") as mock_run:
+                mock_proc = MagicMock()
+                mock_proc.returncode = 0
+                mock_proc.stdout = "Created"
+                mock_proc.stderr = ""
+                mock_run.return_value = mock_proc
+
+                success = execute_line(f"create venv {temp_dir}/myenv", "/bin/bash", {}, all_names, cmds, None)
+                self.assertTrue(success)
+                mock_run.assert_called_once()
+                self.assertIn("venv", mock_run.call_args[0][0])
+                self.assertIn(f"{temp_dir}/myenv", mock_run.call_args[0][0])
+
+            # Test enter venv
+            # Create a mock bin directory so validation passes
+            bin_dir_name = "Scripts" if os.name == "nt" else "bin"
+            os.makedirs(os.path.join(temp_dir, "myenv", bin_dir_name), exist_ok=True)
+
+            # Ensure VIRTUAL_ENV is not initially set
+            original_virtual_env = os.environ.get("VIRTUAL_ENV")
+            original_path = os.environ.get("PATH")
+            if "VIRTUAL_ENV" in os.environ:
+                del os.environ["VIRTUAL_ENV"]
+
+            try:
+                success = execute_line(f"enter venv {temp_dir}/myenv", "/bin/bash", {}, all_names, cmds, None)
+                self.assertTrue(success)
+                self.assertEqual(os.environ.get("VIRTUAL_ENV"), os.path.abspath(f"{temp_dir}/myenv"))
+                self.assertTrue(os.environ.get("PATH", "").startswith(os.path.abspath(os.path.join(temp_dir, "myenv", bin_dir_name))))
+
+                # Test exit venv
+                success = execute_line("exit venv", "/bin/bash", {}, all_names, cmds, None)
+                self.assertTrue(success)
+                self.assertNotIn("VIRTUAL_ENV", os.environ)
+                self.assertFalse(os.environ.get("PATH", "").startswith(os.path.abspath(os.path.join(temp_dir, "myenv", bin_dir_name))))
+            finally:
+                if original_virtual_env:
+                    os.environ["VIRTUAL_ENV"] = original_virtual_env
+                elif "VIRTUAL_ENV" in os.environ:
+                    del os.environ["VIRTUAL_ENV"]
+                if original_path:
+                    os.environ["PATH"] = original_path
 
         finally:
             shutil.rmtree(temp_dir)
