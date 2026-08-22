@@ -161,6 +161,11 @@ def main():
         sys.exit(1)
         
     target = sys.argv[1]
+    # Prevent option injection and invalid characters
+    if not target or target.startswith('-') or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:' for c in target):
+        print(f"Error: Invalid target hostname or IP address '{target}'.")
+        sys.exit(1)
+
     console = Console()
     
     results = {}

@@ -52,17 +52,28 @@ def extract_archive(archive_name: str, dest_dir: str = "."):
         sys.exit(1)
         
     dest_path = Path(dest_dir).resolve()
+    dest_path_resolved = os.path.abspath(dest_path)
     dest_path.mkdir(parents=True, exist_ok=True)
     
-    print(f"Extracting '{arch_path.name}' to '{dest_path}'...")
+    print(f"Extracting '{arch_path.name}' to '{dest_path_resolved}'...")
     
     if zipfile.is_zipfile(arch_path):
         with zipfile.ZipFile(arch_path, "r") as zf:
-            zf.extractall(dest_path)
+            for member in zf.namelist():
+                target_path = os.path.abspath(os.path.join(dest_path_resolved, member))
+                if os.path.commonpath([dest_path_resolved, target_path]) != dest_path_resolved:
+                    print(f"Error: Path traversal detected in zip archive for member: {member}")
+                    sys.exit(1)
+            zf.extractall(dest_path_resolved)
         print("Extraction complete.")
     elif tarfile.is_tarfile(arch_path):
         with tarfile.open(arch_path, "r:*") as tf:
-            tf.extractall(dest_path)
+            for member in tf.getmembers():
+                target_path = os.path.abspath(os.path.join(dest_path_resolved, member.name))
+                if os.path.commonpath([dest_path_resolved, target_path]) != dest_path_resolved:
+                    print(f"Error: Path traversal detected in tar archive for member: {member.name}")
+                    sys.exit(1)
+            tf.extractall(dest_path_resolved)
         print("Extraction complete.")
     else:
         print(f"Error: Format of '{archive_name}' is not supported (supported: .zip, .tar, .tar.gz, .tgz).")

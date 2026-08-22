@@ -104,9 +104,10 @@ def system_restart_cmd(svc: str) -> list[str]:
     if IS_MACOS:
         if shutil.which("brew"):
             return ["brew", "services", "restart", svc]
+        safe_svc = shlex.quote(svc)
         return ["bash", "-c",
-                f"sudo launchctl unload /Library/LaunchDaemons/{svc}.plist 2>/dev/null; "
-                f"sudo launchctl load /Library/LaunchDaemons/{svc}.plist"]
+                f"sudo launchctl unload /Library/LaunchDaemons/{safe_svc}.plist 2>/dev/null; "
+                f"sudo launchctl load /Library/LaunchDaemons/{safe_svc}.plist"]
     return ["systemctl", "restart", svc]
 
 

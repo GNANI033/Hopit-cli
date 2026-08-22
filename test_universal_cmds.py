@@ -265,6 +265,33 @@ class TestUniversalCommands(unittest.TestCase):
             # If posix=False, backslashes are preserved
             preserved = _custom_split(test_path, posix=False)[0]
             self.assertEqual(preserved, test_path)
+    def test_archive_path_traversal(self):
+        import tempfile
+        import os
+        import zipfile
+        import shutil
+        from hopit.archive import extract_archive
+
+        temp_dir = tempfile.mkdtemp()
+        try:
+            # Create a zip file containing a file with a path traversal name
+            zip_path = os.path.join(temp_dir, "traversal.zip")
+            with zipfile.ZipFile(zip_path, "w") as zf:
+                # Add a member that tries to go outside the extraction directory
+                zf.writestr("../outside_file.txt", "malicious payload")
+
+            dest_dir = os.path.join(temp_dir, "extracted")
+            
+            # extract_archive should detect path traversal and exit with SystemExit
+            with self.assertRaises(SystemExit):
+                extract_archive(zip_path, dest_dir)
+                
+            # Verify that no file was written outside the extraction directory
+            outside_file = os.path.join(temp_dir, "outside_file.txt")
+            self.assertFalse(os.path.exists(outside_file))
+
+        finally:
+            shutil.rmtree(temp_dir)
 
 if __name__ == "__main__":
     unittest.main()

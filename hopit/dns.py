@@ -12,6 +12,11 @@ def main():
         sys.exit(1)
 
     host = sys.argv[1]
+    # Prevent option injection and invalid characters
+    if not host or host.startswith('-') or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:' for c in host):
+        print(f"Error: Invalid hostname or IP address '{host}'.")
+        sys.exit(1)
+
     console = Console()
     
     grid = Table.grid(padding=(0, 2))
