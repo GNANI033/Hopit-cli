@@ -343,6 +343,38 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
             word = words[-1]
             paths = load_path_entries(word)
             return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+
+    elif cmd == "create":
+        if len(words) == 2:
+            create_subs = {
+                "folder": "Create a new directory (including parent directories)",
+                "file": "Create a new empty file",
+            }
+            return [(k, v) for k, v in create_subs.items()]
+        elif len(words) >= 3:
+            from hopit.loaders import load_path_entries
+            word = words[-1]
+            paths = load_path_entries(word)
+            return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+
+    elif cmd == "show":
+        if len(words) == 2:
+            show_subs = {
+                "file": "Show contents of a file (cat)",
+                "start": "Show the first N lines of a file (head)",
+                "end": "Show the last N lines of a file (tail)",
+                "tree": "Show directory structure in a tree (tree)",
+                "env": "View or filter environment variables (env)",
+                "history": "Show the session command history (history)",
+            }
+            return [(k, v) for k, v in show_subs.items()]
+        elif len(words) >= 3:
+            sub = words[1].lower()
+            if sub in ("file", "start", "end", "tree"):
+                from hopit.loaders import load_path_entries
+                word = words[-1]
+                paths = load_path_entries(word)
+                return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
                 
     return []
 
@@ -410,7 +442,26 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress"):
+            elif resolved in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "show"):
+                candidates = get_user_group_perm_completions(words, self.commands)
+                word_lower = word.lower()
+                matches = []
+                for cand, meta in candidates:
+                    if cand.lower().startswith(word_lower):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
+                return
+            elif resolved == "create":
+                if len(words) >= 3:
+                    yield Completion(
+                        "",
+                        start_position=0,
+                        display="💡 Enter name to create here or full path",
+                        display_meta="info"
+                    )
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []

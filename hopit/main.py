@@ -1,4 +1,5 @@
 import os
+import sys
 import shlex
 import shutil
 import subprocess
@@ -248,6 +249,16 @@ def show_command_help(cmd_name: str, commands: dict):
     console.print(panel)
 
 
+def resolve_subcommand(token: str, valid_subcmds: list[str]) -> tuple[str | None, list[str]]:
+    token = token.lower()
+    if token in valid_subcmds:
+        return token, [token]
+    matches = sorted(set(c for c in valid_subcmds if c.startswith(token)))
+    if len(matches) == 1:
+        return matches[0], matches
+    return None, matches
+
+
 def show_context_help(words: list[str], commands: dict):
     from rich.panel import Panel
     from rich.table import Table
@@ -259,6 +270,19 @@ def show_context_help(words: list[str], commands: dict):
         return
         
     subcmd = words[1].lower() if len(words) > 1 else ""
+    if resolved == "show":
+        matched_sub, _ = resolve_subcommand(subcmd, ["file", "start", "end", "tree", "env", "history"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "create":
+        matched_sub, _ = resolve_subcommand(subcmd, ["folder", "file"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "find":
+        matched_sub, _ = resolve_subcommand(subcmd, ["file", "text"])
+        if matched_sub:
+            subcmd = matched_sub
+
     rest = words[2:]
     
     title = f"[bold green]Help: {' '.join(words)} ?[/bold green]"
@@ -492,6 +516,92 @@ def show_context_help(words: list[str], commands: dict):
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return
 
+    if resolved == "create":
+        console.print("[cyan]Enter name to create here or full path[/cyan]")
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]folder[/green]", "Create a new directory (including parent directories)")
+            table.add_row("[green]file[/green]", "Create a new empty file")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif subcmd == "folder":
+            if not rest:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the directory path to create", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "file":
+            if not rest:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to create", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected 'folder' or 'file'.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "show":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]file <path>[/green]", "Show contents of a file (cat)")
+            table.add_row("[green]start <path>[/green]", "Show first N lines of a file (head)")
+            table.add_row("[green]end <path>[/green]", "Show last N lines of a file (tail)")
+            table.add_row("[green]tree [path][/green]", "Show directory structure in a tree (tree)")
+            table.add_row("[green]env [filter][/green]", "View or filter environment variables (env)")
+            table.add_row("[green]history[/green]", "Show the session command history (history)")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif subcmd == "file":
+            if not rest:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to show", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "start":
+            if not rest:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to show start of", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "end":
+            if not rest:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to show end of", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "tree":
+            if not rest:
+                console.print(Panel("[yellow][path][/yellow]  Specify optional directory path", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "env":
+            if not rest:
+                console.print(Panel("[yellow][filter][/yellow]  Specify optional filter term", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "history":
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel(f"Unknown subcommand '{subcmd}'.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "find":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]file <pattern>[/green]", "Search files by name pattern")
+            table.add_row("[green]text <pattern>[/green]", "Search text pattern inside files")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif subcmd == "file":
+            if not rest:
+                console.print(Panel("[yellow]<pattern>[/yellow]  Specify name pattern to search", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow][path][/yellow]  Specify optional search directory", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "text":
+            if not rest:
+                console.print(Panel("[yellow]<pattern>[/yellow]  Specify text pattern to search for", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow][path][/yellow]  Specify optional search directory", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel(f"Unknown subcommand '{subcmd}'.", title=title, border_style="cyan", expand=False))
+        return
+
     # --- SQL / databases ---
     if resolved == "sqlite":
         if not subcmd:
@@ -639,6 +749,7 @@ def execute_line(
     all_names: list[str],
     commands: dict,
     manager: str | None,
+    session=None,
 ) -> bool:
     """Executes a single command line. Returns True to continue prompt loop, False to exit."""
     line_strip = line.strip()
@@ -695,6 +806,51 @@ def execute_line(
 
     name, ambiguous = resolve_command(all_names, head)
 
+    if name is not None:
+        intended_words = [name]
+        if name == "show" and rest:
+            sub_token = rest[0].lower()
+            valid_subs = ["file", "start", "end", "tree", "env", "history"]
+            subcmd, _ = resolve_subcommand(sub_token, valid_subs)
+            if subcmd:
+                intended_words.append(subcmd)
+                intended_words.extend(rest[1:])
+            else:
+                intended_words.extend(rest)
+        elif name == "find" and rest and rest[0].lower() not in ("-name", "-type", "-path", "-print"):
+            valid_subs = ["file", "text"]
+            subcmd, _ = resolve_subcommand(rest[0], valid_subs)
+            if subcmd:
+                intended_words.append(subcmd)
+                intended_words.extend(rest[1:])
+            else:
+                intended_words.extend(rest)
+        elif name == "create" and rest:
+            sub_token = rest[0].lower()
+            valid_subs = ["folder", "file"]
+            subcmd, _ = resolve_subcommand(sub_token, valid_subs)
+            if subcmd:
+                intended_words.append(subcmd)
+                intended_words.extend(rest[1:])
+            else:
+                intended_words.extend(rest)
+        else:
+            intended_words.extend(rest)
+
+        if show_cmd:
+            intended_words.append("--show")
+
+        intended_line = shlex.join(intended_words)
+
+        if session and hasattr(session, "history"):
+            hist = session.history
+            if hasattr(hist, "_loaded_strings") and hist._loaded_strings:
+                if hist._loaded_strings[0] == line:
+                    hist._loaded_strings[0] = intended_line
+            if hasattr(hist, "_storage") and hist._storage:
+                if hist._storage[-1] == line:
+                    hist._storage[-1] = intended_line
+
     if name is None:
         if ambiguous:
             console.print(
@@ -730,6 +886,113 @@ def execute_line(
         return True
     if name in ("exit", "quit"):
         return False
+
+    if name in ("pwd", "whereami"):
+        console.print(f"[green]📁 {os.getcwd()}[/green]")
+        return True
+
+    if name == "history":
+        if session and hasattr(session, "history"):
+            history_entries = list(session.history.get_strings())
+            for i, cmd in enumerate(history_entries, 1):
+                console.print(f"  [cyan]{i:5}[/cyan]  {cmd}")
+        else:
+            console.print("[yellow]No command history available in this session.[/yellow]")
+        return True
+
+    if name == "show":
+        if not rest:
+            console.print("[yellow]Usage: show [file|start|end|tree|env|history] [arguments][/yellow]")
+            return True
+        sub_token = rest[0].lower()
+        subargs = rest[1:]
+        
+        valid_subs = ["file", "start", "end", "tree", "env", "history"]
+        subcmd, matches = resolve_subcommand(sub_token, valid_subs)
+        
+        if not subcmd:
+            if len(matches) > 1:
+                console.print(f"[red]Ambiguous show subcommand '{sub_token}'. Candidates: {', '.join(matches)}[/red]")
+            else:
+                console.print(f"[red]Unknown show subcommand '{sub_token}'. Supported: {', '.join(valid_subs)}[/red]")
+            return True
+        
+        if subcmd == "file":
+            if not subargs:
+                console.print("[yellow]Usage: show file <file_path>[/yellow]")
+                return True
+            real_cmd = [sys.executable, "-m", "hopit.cat"] + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show file", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show file: {e}[/red]")
+        elif subcmd == "start":
+            if not subargs:
+                console.print("[yellow]Usage: show start <file_path>[/yellow]")
+                return True
+            real_cmd = [sys.executable, "-m", "hopit.head"] + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show start", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show start: {e}[/red]")
+        elif subcmd == "end":
+            if not subargs:
+                console.print("[yellow]Usage: show end <file_path>[/yellow]")
+                return True
+            real_cmd = [sys.executable, "-m", "hopit.tail"] + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show end", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show end: {e}[/red]")
+        elif subcmd == "tree":
+            real_cmd = [sys.executable, "-m", "hopit.tree"] + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show tree", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show tree: {e}[/red]")
+        elif subcmd == "env":
+            real_cmd = [sys.executable, "-m", "hopit.env"] + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show env", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show env: {e}[/red]")
+        elif subcmd == "history":
+            if session and hasattr(session, "history"):
+                history_entries = list(session.history.get_strings())
+                for i, cmd_entry in enumerate(history_entries, 1):
+                    console.print(f"  [cyan]{i:5}[/cyan]  {cmd_entry}")
+            else:
+                console.print("[yellow]No command history available in this session.[/yellow]")
+        return True
+
+    if name == "find":
+        if rest and rest[0].lower() not in ("-name", "-type", "-path", "-print"):
+            valid_subs = ["file", "text"]
+            subcmd, matches = resolve_subcommand(rest[0], valid_subs)
+            if subcmd:
+                subargs = rest[1:]
+                if subcmd == "file":
+                    if not subargs:
+                        console.print("[yellow]Usage: find file <pattern> [path][/yellow]")
+                        return True
+                    real_cmd = [sys.executable, "-m", "hopit.find"] + subargs
+                else:
+                    if not subargs:
+                        console.print("[yellow]Usage: find text <pattern> [path][/yellow]")
+                        return True
+                    real_cmd = [sys.executable, "-m", "hopit.grep"] + subargs
+                
+                try:
+                    proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                    render_result(proc, label=" ".join(real_cmd), cmd_name=f"find {subcmd}", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+                except Exception as e:
+                    console.print(f"[red]Error running find {subcmd}: {e}[/red]")
+                return True
 
     if name in ("open", "cd"):
         if not rest:
@@ -876,10 +1139,51 @@ def execute_line(
             console.print("[yellow]Usage: mkdir <path>[/yellow]")
             return True
         try:
-            os.makedirs(os.path.expanduser(rest[0]), exist_ok=True)
-            console.print(f"[green]Created[/green] {rest[0]}")
+            target_path = os.path.expanduser(rest[0])
+            os.makedirs(target_path, exist_ok=True)
+            console.print(f"[green]Created folder:[/green] {target_path}")
         except Exception as e:
             console.print(f"[red]mkdir: {e}[/red]")
+        return True
+
+    if name == "create":
+        if not rest:
+            console.print("[cyan]Enter name to create here or full path[/cyan]")
+            console.print("[yellow]Usage: create [folder|file] <path>[/yellow]")
+            return True
+        sub_token = rest[0].lower()
+        valid_subs = ["folder", "file"]
+        sub, matches = resolve_subcommand(sub_token, valid_subs)
+        if not sub:
+            if len(matches) > 1:
+                console.print(f"[red]Ambiguous option '{sub_token}'. Candidates: {', '.join(matches)}[/red]")
+            else:
+                console.print(f"[red]Unknown option '{sub_token}'. Expected 'folder' or 'file'.[/red]")
+            return True
+        if len(rest) < 2:
+            console.print("[cyan]Enter name to create here or full path[/cyan]")
+            console.print(f"[yellow]Usage: create {sub} <path>[/yellow]")
+            return True
+        target_path = os.path.expanduser(rest[1])
+        if sub == "folder":
+            try:
+                os.makedirs(target_path, exist_ok=True)
+                console.print(f"[green]Created folder:[/green] {target_path}")
+            except Exception as e:
+                console.print(f"[red]create folder: {e}[/red]")
+        elif sub == "file":
+            try:
+                if os.path.exists(target_path):
+                    console.print(f"[yellow]File already exists:[/yellow] {target_path}")
+                else:
+                    parent = os.path.dirname(target_path)
+                    if parent:
+                        os.makedirs(parent, exist_ok=True)
+                    with open(target_path, 'w') as f:
+                        pass
+                    console.print(f"[green]Created file:[/green] {target_path}")
+            except Exception as e:
+                console.print(f"[red]create file: {e}[/red]")
         return True
 
     if name == "netconfig":
@@ -1118,7 +1422,7 @@ def main():
                 continue
 
             try:
-                keep_running = execute_line(line, shell, aliases, all_names, commands, manager)
+                keep_running = execute_line(line, shell, aliases, all_names, commands, manager, session)
                 if not keep_running:
                     break
             except KeyboardInterrupt:
