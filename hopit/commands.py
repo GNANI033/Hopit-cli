@@ -770,6 +770,12 @@ def build_commands(manager: str | None, names: dict) -> dict:
             needs_arg=True,
             mode="capture",
         ),
+        "lookup": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.lookup"] + (shlex.split(arg) if arg else []),
+            desc="Perform consolidated diagnostics (DNS, Ping, HTTP, Traceroute): lookup <host_or_ip>",
+            needs_arg=True,
+            mode="capture",
+        ),
         "nslookup": Command(
             run=lambda arg: ["nslookup"] + shlex.split(arg) if arg else [],
             desc="Query Internet name servers: nslookup <host>",

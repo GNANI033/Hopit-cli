@@ -33,6 +33,7 @@ This document records the complete status of commands in **Hopit-CLI**. It provi
 | `ping <host>` | Ping a remote host to check network connectivity. | Stream |
 | `traceroute <host>` | Trace the route packets take to reach a host (tracert on Windows). | Stream |
 | `dns <host>` | Perform detailed DNS resolution lookup showing IPv4, IPv6, MX, and TXT records. | Capture |
+| `lookup <host_or_ip>` | Perform consolidated diagnostics (DNS, Ping, HTTP, Traceroute) in a live dashboard. | Capture |
 | `nslookup <host>` | Query Internet name servers interactively or perform standard lookups. | Stream |
 | `route [args]` | View or configure the system network routing table cross-platform. | Capture |
 | `arp [args]` | View and manage the system Address Resolution Protocol (ARP) table. | Capture |

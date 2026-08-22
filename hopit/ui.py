@@ -593,19 +593,98 @@ def render_result(
 
 
 def print_help(commands: dict, manager: str | None):
-    table = Table(title="hopit-cli — available commands", show_lines=False)
-    table.add_column("Command", style="bold cyan")
-    table.add_column("Description")
-    for name, cmd in commands.items():
-        privilege_label = "admin" if IS_WINDOWS else "sudo"
-        desc = cmd.desc + (f"  [dim]({privilege_label})[/dim]" if cmd.needs_sudo else "")
-        table.add_row(name, desc)
-    for name, desc in BUILTIN_DESCRIPTIONS.items():
+    # Categorized commands mapping
+    categories = {
+        "📂 File & Directory Management": [
+            "list", "cd", "back", "open", "create", "mkdir", "copy", "move", "remove", "show", "archive",
+            "pwd", "whereami", "touch", "cat", "head", "viewstart", "tail", "viewend", "less", "scrollfile",
+            "tree", "find", "findfile", "grep", "findtext", "compress", "search", "disk", "drive"
+        ],
+        "⚙️ Process & System Resources": [
+            "processes", "ps", "process", "top", "kill", "pkill", "killport", "sysinfo", "resources", "sqlite",
+            "containers", "config", "alias", "history", "env", "which", "where", "findcommand", "reboot",
+            "shutdown", "cancel", "port"
+        ],
+        "🌐 Network & Web Diagnostics": [
+            "lookup", "dns", "ping", "traceroute", "nslookup", "connections", "gateway", "mac", "ip", "netconfig",
+            "netstat", "route", "arp", "hostname"
+        ],
+        "🔒 Remote Access, Services & Security": [
+            "ssh", "scp", "sftp", "download", "wget", "curl", "firewall", "user", "group", "permission",
+            "permissions", "status", "start", "stop", "restart", "logs", "live", "enable", "disable",
+            "chmod", "chown", "chgrp", "useradd", "adduser", "userdel", "deluser", "usermod", "passwd",
+            "groupadd", "addgroup", "groupdel", "delgroup"
+        ],
+        "🛠️ Version Control (Git)": [
+            "git", "gitsave"
+        ]
+    }
+
+    # Tracking categorized command names to catch any missing ones
+    categorized_names = set()
+    for cmd_list in categories.values():
+        categorized_names.update(cmd_list)
+
+    # Add Built-ins
+    builtins = ["help", "clear", "exit", "quit"]
+    categorized_names.update(builtins)
+
+    # Anything else in commands goes to Miscellaneous
+    misc = []
+    for name in commands:
+        if name not in categorized_names:
+            misc.append(name)
+            
+    if misc:
+        categories["🛠️ Other Commands"] = misc
+
+    # Header
+    console.print("[bold green]hopit-cli — Universal Administrative Shell[/bold green]\n")
+
+    for cat_title, cmd_list in categories.items():
+        cat_cmds = []
+        for name in cmd_list:
+            if name in commands:
+                cat_cmds.append((name, commands[name]))
+
+        if not cat_cmds:
+            continue
+
+        table = Table(title=cat_title, show_lines=False, title_justify="left", box=None, padding=(0, 2))
+        table.add_column("Command", style="bold cyan", width=18)
+        table.add_column("Description", width=55)
+        table.add_column("Platform Support", style="bold green", justify="center", width=18)
+
+        for name, cmd in cat_cmds:
+            privilege_label = "admin" if IS_WINDOWS else "sudo"
+            desc = cmd.desc + (f"  [dim]({privilege_label})[/dim]" if cmd.needs_sudo else "")
+            
+            # Universal compat since we support/translate them all
+            compat = "L | M | W"
+            table.add_row(name, desc, compat)
+            
+        console.print(table)
+        console.print()
+
+    # CLI Builtins table
+    builtin_cmds = []
+    for name in builtins:
         if name == "quit":
-            continue  # shown together with 'exit'
+            continue
         label = "exit / quit" if name == "exit" else name
-        table.add_row(label, desc)
-    console.print(table)
+        builtin_cmds.append((label, BUILTIN_DESCRIPTIONS[name]))
+        
+    if builtin_cmds:
+        table = Table(title="🛠️ CLI Built-ins", show_lines=False, title_justify="left", box=None, padding=(0, 2))
+        table.add_column("Command", style="bold cyan", width=18)
+        table.add_column("Description", width=55)
+        table.add_column("Platform Support", style="bold green", justify="center", width=18)
+        
+        for name, desc in builtin_cmds:
+            table.add_row(name, desc, "L | M | W")
+        console.print(table)
+        console.print()
+
     console.print(
         "[dim]Note: Commands support prefix auto-resolution and interactive discovery. "
         "Type '?' after any command or sub-argument for positional context and usage syntax.[/dim]"

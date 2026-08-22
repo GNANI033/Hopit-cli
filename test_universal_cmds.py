@@ -232,7 +232,7 @@ class TestUniversalCommands(unittest.TestCase):
             "ping", "traceroute", "dns", "nslookup", "route", "arp", "netstat",
             "connections", "hostname", "gateway", "mac", "curl", "wget",
             "ssh", "scp", "sftp", "ps", "process", "kill", "pkill", "top",
-            "resources"
+            "resources", "lookup"
         ]
         for cmd in new_cmds:
             self.assertIn(cmd, cmds, f"{cmd} should be registered in commands dict")
