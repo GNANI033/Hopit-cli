@@ -5,10 +5,11 @@ import shutil
 import time
 import platform
 import urllib.request
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.live import Live
+from rich.rule import Rule
 
 def resolve_dns(target):
     info = {"ipv4": [], "ipv6": [], "ptr": None, "cname": None}
@@ -60,7 +61,7 @@ def run_ping(target):
         
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        output = proc.stdout
+        output = proc.stdout or ""
         
         loss = "100%"
         rtt = "N/A"
@@ -69,9 +70,14 @@ def run_ping(target):
         if "packet loss" in output_lower:
             for line in output.splitlines():
                 if "packet loss" in line.lower():
-                    loss = line.split("packet loss")[0].split(",")[-1].strip()
+                    parts = line.split("packet loss")[0].split(",")
+                    if parts:
+                        loss = parts[-1].strip()
                 if "min/avg/max" in line.lower() or "rtt min/avg/max" in line.lower():
-                    rtt = line.split("=")[1].strip()
+                    if "=" in line:
+                        rtt = line.split("=")[1].strip()
+                    else:
+                        rtt = line.strip()
         elif "loss" in output_lower:
             for line in output.splitlines():
                 if "lost =" in line.lower():
@@ -79,11 +85,14 @@ def run_ping(target):
                     if len(parts) > 1:
                         loss = parts[1].split()[0]
                 if "minimum =" in line.lower():
-                    rtt = line.strip()
+                    if "=" in line:
+                        rtt = line.split("=")[-1].strip()
+                    else:
+                        rtt = line.strip()
                     
         return {"success": proc.returncode == 0, "loss": loss, "rtt": rtt}
     except Exception as e:
-        return {"success": False, "loss": "Error", "rtt": "N/A"}
+        return {"success": False, "loss": f"Error: {e}", "rtt": "N/A"}
 
 def run_traceroute(target):
     system = platform.system()
@@ -99,7 +108,7 @@ def run_traceroute(target):
             return ["traceroute/tracepath command not found on host path"]
             
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         hops = []
         for line in proc.stdout.splitlines():
             line_str = line.strip()
@@ -169,6 +178,72 @@ def main():
     console = Console()
     
     results = {}
+    
+    def generate_diagnostic_summary(res):
+        parts = []
+        if "ping" not in res and "http" not in res:
+            return None
+            
+        p = res.get("ping")
+        h = res.get("http")
+        
+        if p:
+            loss = p.get("loss", "100%")
+            if loss == "0%":
+                parts.append("[green]✓ Ping: stable (0% loss)[/green]")
+            elif loss == "100%":
+                parts.append("[red]✗ Ping: unreachable (100% loss)[/red]")
+            elif "error" in loss.lower():
+                parts.append(f"[yellow]⚠ Ping: error ({loss})[/yellow]")
+            else:
+                parts.append(f"[yellow]⚠ Ping: degraded ({loss} loss)[/yellow]")
+                
+            rtt = p.get("rtt", "N/A")
+            if rtt != "N/A" and "/" in rtt:
+                try:
+                    avg_rtt = rtt.split("/")[1]
+                    parts.append(f"  Latency: [cyan]{avg_rtt} ms[/cyan] avg")
+                except Exception:
+                    pass
+                    
+        if h:
+            status = str(h.get("status", "N/A"))
+            server = h.get("server", "N/A")
+            latency = h.get("latency", "N/A")
+            
+            if "200" in status or "OK" in status:
+                parts.append(f"[green]✓ HTTP: active ({latency})[/green]")
+            elif "HTTP Error" in status:
+                parts.append(f"[red]✗ HTTP: returned {status}[/red]")
+            elif "Error" in status:
+                parts.append(f"[red]✗ HTTP: failed ({status})[/red]")
+            else:
+                parts.append(f"[yellow]⚠ HTTP: status {status}[/yellow]")
+                
+            if server and server != "N/A":
+                parts.append(f"  Server: [bold]{server}[/bold]")
+                
+        if p and h:
+            p_ok = p.get("success", False) and p.get("loss") == "0%"
+            h_ok = "200" in str(h.get("status", "")) or "OK" in str(h.get("status", ""))
+            
+            parts.append("")
+            if p_ok and h_ok:
+                parts.append("[bold green]Conclusion:[/bold green] Host is healthy & active.")
+            elif p_ok and not h_ok:
+                sc = str(h.get("status", ""))
+                if "403" in sc:
+                    parts.append("[bold yellow]Conclusion:[/bold yellow] Reachable, but access restricted (403).")
+                elif "401" in sc or "407" in sc:
+                    parts.append("[bold yellow]Conclusion:[/bold yellow] Reachable, auth required.")
+                else:
+                    parts.append("[bold red]Conclusion:[/bold red] Reachable, but HTTP service failed.")
+            elif not p_ok and h_ok:
+                parts.append("[bold yellow]Conclusion:[/bold yellow] HTTP is up, ping is blocked.")
+            else:
+                parts.append("[bold red]Conclusion:[/bold red] Host is completely offline.")
+                
+        return "\n".join(parts)
     
     def generate_dashboard():
         table = Table.grid(padding=1)
@@ -240,8 +315,18 @@ def main():
             trace_table.add_row("Status", trace_status)
 
         grids_table = Table.grid(padding=1)
-        grids_table.add_column("Col1", width=42)
-        grids_table.add_column("Col2", width=42)
+        grids_table.add_column("Col1")
+        grids_table.add_column("Col2")
+        
+        summary_text = generate_diagnostic_summary(results)
+        if summary_text:
+            http_content = Group(
+                http_table,
+                Rule(style="dim cyan"),
+                summary_text
+            )
+        else:
+            http_content = http_table
         
         grids_table.add_row(
             Panel(dns_table, title="[bold green]DNS Resolution[/bold green]", border_style="cyan"),
@@ -249,7 +334,7 @@ def main():
         )
         
         grids_table.add_row(
-            Panel(http_table, title="[bold green]HTTP Web Probe[/bold green]", border_style="cyan"),
+            Panel(http_content, title="[bold green]HTTP Web Probe[/bold green]", border_style="cyan"),
             Panel(trace_table, title="[bold green]Route Trace[/bold green]", border_style="cyan")
         )
         

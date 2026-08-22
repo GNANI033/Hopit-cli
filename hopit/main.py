@@ -1414,7 +1414,8 @@ def main():
             # Powerline arrow glyph and git icon need a Nerd Font.
             # Controlled by the nerd_fonts configuration setting.
             use_powerline = is_nerd_fonts_enabled()
-            sep      = "\ue0b0" if use_powerline else ">"
+            sep      = "\ue0b0" if use_powerline else "|"
+            end_sep  = sep if use_powerline else ""
             git_icon = " " if use_powerline else ""
 
             prompt_fragments = [
@@ -1436,7 +1437,7 @@ def main():
 
             prompt_fragments.extend([
                 ("class:time", f" {now} "),
-                ("class:time_sep", sep),
+                ("class:time_sep", end_sep),
                 ("", " "),
             ])
             

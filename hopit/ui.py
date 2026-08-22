@@ -564,15 +564,7 @@ def render_result(
     output = output.rstrip("\n")
 
     theme = get_active_theme()
-    output_lower = output.lower()
-    if "active (running)" in output_lower or "running" in output_lower or "online" in output_lower:
-        border = "green"
-    elif "failed" in output_lower or "error" in output_lower or proc.returncode not in (0, 3):
-        border = "red"
-    elif "inactive" in output_lower or "dead" in output_lower or "stopped" in output_lower:
-        border = "yellow"
-    else:
-        border = theme.get("border", "cyan")
+    border = theme.get("border", "cyan")
 
     if output:
         lines = output.splitlines()

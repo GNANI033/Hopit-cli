@@ -170,17 +170,26 @@ def get_active_theme_name() -> str:
 def is_nerd_fonts_enabled() -> bool:
     try:
         config_path = os.path.expanduser("~/.hopit-config.json")
+        cfg = {}
         if os.path.exists(config_path):
             import json
             with open(config_path, "r") as f:
                 cfg = json.load(f)
-                val = cfg.get("nerd_fonts", False)
-                if isinstance(val, str):
-                    return val.lower() == "true"
-                return bool(val)
+                if "nerd_fonts" in cfg:
+                    val = cfg["nerd_fonts"]
+                    if isinstance(val, str):
+                        return val.lower() == "true"
+                    return bool(val)
     except Exception:
         pass
-    return False
+
+    try:
+        os_name = read_os_pretty_name().lower()
+        is_ubuntu = "ubuntu" in os_name
+    except Exception:
+        is_ubuntu = False
+
+    return ((not IS_WINDOWS) or IS_WINDOWS_TERMINAL) and not is_ubuntu
 
 # Build the Rich Console with the right color profile.
 if IS_WINDOWS_TERMINAL:
