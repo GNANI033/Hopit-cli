@@ -24,7 +24,7 @@ def save_config(config):
 
 def main():
     from rich.console import Console
-    from hopit.config import detect_editor, detect_package_manager, get_active_theme_name, THEMES, console
+    from hopit.config import detect_editor, detect_package_manager, get_active_theme_name, is_nerd_fonts_enabled, THEMES, console
     config = load_config()
 
     if len(sys.argv) < 2:
@@ -36,6 +36,7 @@ def main():
         custom_editor = config.get("editor")
         custom_pkg = config.get("package_manager")
         custom_theme = config.get("theme")
+        custom_nerd = config.get("nerd_fonts")
 
         table.add_row(
             "theme",
@@ -51,6 +52,11 @@ def main():
             "package_manager",
             custom_pkg or "Not set",
             f"Active: {detect_package_manager()}" + (" (override)" if custom_pkg else " (auto-detected)")
+        )
+        table.add_row(
+            "nerd_fonts",
+            str(custom_nerd) if custom_nerd is not None else "Not set",
+            f"Active: {is_nerd_fonts_enabled()}"
         )
 
         console.print(table)
@@ -71,15 +77,22 @@ def main():
         setting = sys.argv[2].lower()
         value = sys.argv[3].lower()
 
-        if setting not in ("editor", "package_manager", "theme"):
-            console.print(f"[red]Unknown setting: {setting}. Valid settings: theme, editor, package_manager[/red]")
+        if setting not in ("editor", "package_manager", "theme", "nerd_fonts"):
+            console.print(f"[red]Unknown setting: {setting}. Valid settings: theme, editor, package_manager, nerd_fonts[/red]")
             sys.exit(1)
 
         if setting == "theme" and value not in THEMES:
             console.print(f"[red]Invalid theme '{value}'. Available themes: {', '.join(THEMES.keys())}[/red]")
             sys.exit(1)
 
-        config[setting] = value
+        if setting == "nerd_fonts" and value not in ("true", "false"):
+            console.print(f"[red]Invalid value for nerd_fonts. Must be 'true' or 'false'.[/red]")
+            sys.exit(1)
+
+        if setting == "nerd_fonts":
+            config[setting] = (value == "true")
+        else:
+            config[setting] = value
         if save_config(config):
             console.print(f"[bold green]Successfully set '{setting}' to '{value}'.[/bold green]")
         else:

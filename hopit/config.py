@@ -167,6 +167,21 @@ def get_active_theme_name() -> str:
         pass
     return "hopit"
 
+def is_nerd_fonts_enabled() -> bool:
+    try:
+        config_path = os.path.expanduser("~/.hopit-config.json")
+        if os.path.exists(config_path):
+            import json
+            with open(config_path, "r") as f:
+                cfg = json.load(f)
+                val = cfg.get("nerd_fonts", False)
+                if isinstance(val, str):
+                    return val.lower() == "true"
+                return bool(val)
+    except Exception:
+        pass
+    return False
+
 # Build the Rich Console with the right color profile.
 if IS_WINDOWS_TERMINAL:
     # Force truecolor Rich output inside Windows Terminal.

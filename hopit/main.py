@@ -37,6 +37,7 @@ from hopit.config import (
     get_git_branch,
     with_privilege,
     get_active_theme,
+    is_nerd_fonts_enabled,
     THEMES,
 )
 from hopit.loaders import (
@@ -953,7 +954,7 @@ def execute_line(
                 return True
             real_cmd = [sys.executable, "-m", "hopit.cat"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show file", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show file: {e}[/red]")
@@ -963,7 +964,7 @@ def execute_line(
                 return True
             real_cmd = [sys.executable, "-m", "hopit.head"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show start", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show start: {e}[/red]")
@@ -973,21 +974,21 @@ def execute_line(
                 return True
             real_cmd = [sys.executable, "-m", "hopit.tail"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show end", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show end: {e}[/red]")
         elif subcmd == "tree":
             real_cmd = [sys.executable, "-m", "hopit.tree"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show tree", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show tree: {e}[/red]")
         elif subcmd == "env":
             real_cmd = [sys.executable, "-m", "hopit.env"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show env", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show env: {e}[/red]")
@@ -1018,7 +1019,7 @@ def execute_line(
                     real_cmd = [sys.executable, "-m", "hopit.grep"] + subargs
                 
                 try:
-                    proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+                    proc = subprocess.run(real_cmd, capture_output=True, text=True)
                     render_result(proc, label=" ".join(real_cmd), cmd_name=f"find {subcmd}", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
                 except Exception as e:
                     console.print(f"[red]Error running find {subcmd}: {e}[/red]")
@@ -1326,7 +1327,7 @@ def execute_line(
         return True
 
     try:
-        proc = subprocess.run(real_cmd, capture_output=True, text=True, timeout=15)
+        proc = subprocess.run(real_cmd, capture_output=True, text=True)
     except FileNotFoundError:
         console.print(f"[red]'{real_cmd[0]}' not found on this system.[/red]")
         return True
@@ -1411,10 +1412,8 @@ def main():
             branch = get_git_branch()
             
             # Powerline arrow glyph and git icon need a Nerd Font.
-            # Linux/Windows Terminal: use powerline glyphs.
-            # Plain cmd.exe: fall back to plain > so the prompt still
-            # looks structured even without a special font installed.
-            use_powerline = (not IS_WINDOWS) or IS_WINDOWS_TERMINAL
+            # Controlled by the nerd_fonts configuration setting.
+            use_powerline = is_nerd_fonts_enabled()
             sep      = "\ue0b0" if use_powerline else ">"
             git_icon = " " if use_powerline else ""
 
