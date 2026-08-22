@@ -1123,7 +1123,7 @@ def print_help(commands: dict, manager: str | None):
             continue
 
         table = Table(title=cat_title, show_lines=False, title_justify="left", box=None, padding=(0, 2))
-        table.add_column("Command", style="bold cyan", width=24)
+        table.add_column("Command", style="bold cyan", width=42)
         table.add_column("Description", width=50)
         table.add_column("Platform Support", style="bold green", justify="center", width=18)
 
@@ -1171,7 +1171,7 @@ def print_help(commands: dict, manager: str | None):
         
     if builtin_cmds:
         table = Table(title="🛠️ CLI Built-ins", show_lines=False, title_justify="left", box=None, padding=(0, 2))
-        table.add_column("Command", style="bold cyan", width=24)
+        table.add_column("Command", style="bold cyan", width=42)
         table.add_column("Description", width=50)
         table.add_column("Platform Support", style="bold green", justify="center", width=18)
         
