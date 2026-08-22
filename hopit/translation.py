@@ -434,6 +434,7 @@ _UNIX_TO_WIN: dict = {
     "systemctl": lambda a: ('sc start ' + _q(a[1]) if len(a)>=2 and a[0]=='start'
                              else 'sc stop ' + _q(a[1]) if len(a)>=2 and a[0]=='stop'
                              else 'sc query ' + (_q(a[1]) if len(a)>=2 else '')),
+    "alias":    lambda a: 'doskey ' + ' '.join(a).replace("='", "=").replace("'", " $*") if a else 'doskey /macros',
 }
 
 # --- Windows -> Linux/macOS ------------------------------------------------
@@ -497,6 +498,11 @@ _WIN_TO_UNIX: dict = {
                            else 'systemctl status ' + _q(a[1]) if len(a)>=2 and a[0]=='query'
                            else 'systemctl ' + _join(a)),
     "net":      translate_win_net_to_unix,
+    "doskey":   lambda a: (
+        'alias ' + ' '.join(x for x in a if x not in ('/macros', '/history')).replace(' $*', '').replace('=', "='", 1) + "'"
+        if any('=' in x for x in a)
+        else ('history' if '/history' in a else 'alias')
+    ),
 }
 
 # --- Linux-specific -> macOS equivalent (applied on macOS only) -----------

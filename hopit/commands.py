@@ -34,6 +34,8 @@ BUILTIN_DESCRIPTIONS = {
     "clear": "Clear the screen",
     "exit": "Leave hopit-cli, or deactivate environment: exit [venv]",
     "quit": "Leave hopit-cli",
+    "alias": "Manage shell aliases natively (translated automatically across OS)",
+    "doskey": "Manage shell aliases natively (translated automatically across OS)",
 }
 
 _CLOCK_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
@@ -656,11 +658,6 @@ def build_commands(manager: str | None, names: dict) -> dict:
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),
-        "alias": Command(
-            run=lambda _: [],  # handled specially in main loop
-            desc="Add a shell alias interactively (auto-detects your shell)",
-            needs_arg=False,
-        ),
         "netconfig": Command(
             run=lambda adapter: [],  # handled specially in main loop
             desc="Interactively configure DHCP/Static IP for an adapter, reset, or release/renew DHCP",
@@ -710,7 +707,7 @@ def build_commands(manager: str | None, names: dict) -> dict:
         ),
         "remove": Command(
             run=lambda _: [],  # handled specially in main loop
-            desc="Delete a file or folder (confirms for non-empty dirs)",
+            desc="Delete a file, folder, or shortcut: remove [shortcut] <path_or_name>",
             needs_arg=True,
             arg_completions=names["path"],
             arg_completion_kind="path",
@@ -724,7 +721,7 @@ def build_commands(manager: str | None, names: dict) -> dict:
         ),
         "create": Command(
             run=lambda _: [],  # handled specially in main loop
-            desc="Create a new folder, file, or virtual environment: create [folder|file|venv] <path>",
+            desc="Create a new folder, file, shortcut, or virtual environment: create [folder|file|shortcut|venv] <path>",
             needs_arg=True,
             arg_completions=names["path"],
             arg_completion_kind="path",

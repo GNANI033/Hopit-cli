@@ -188,6 +188,32 @@ def write_alias_to_rc(shell: str, name: str, value: str) -> str:
     return rc
 
 
+def remove_alias_from_rc(shell: str, name: str) -> str:
+    """Remove an alias definition from the user's rc file."""
+    rc = shell_rc_file(shell)
+    if not os.path.isfile(rc):
+        return rc
+    
+    with open(rc, "r") as f:
+        lines = f.readlines()
+        
+    shell_name = os.path.basename(shell)
+    if IS_WINDOWS:
+        prefix = f"doskey {name}="
+    elif shell_name == "fish":
+        prefix = f"abbr --add {name} "
+    else:
+        prefix = f"alias {name}="
+        
+    with open(rc, "w") as f:
+        for line in lines:
+            if line.strip().startswith(prefix):
+                continue
+            f.write(line)
+            
+    return rc
+
+
 def run_shell_line(line: str, shell: str):
     if IS_WINDOWS:
         subprocess.run(line, shell=True)
@@ -203,7 +229,10 @@ def show_command_help(cmd_name: str, commands: dict):
 
     if cmd_name in BUILTIN_DESCRIPTIONS:
         desc = BUILTIN_DESCRIPTIONS[cmd_name]
-        usage = cmd_name
+        if cmd_name in ("alias", "doskey"):
+            usage = f"{cmd_name} [name='command']\n[bold cyan]Examples:[/bold cyan]\n  {cmd_name}\n  {cmd_name} ll='ls -l'\n  {cmd_name} myip='curl ifconfig.me'"
+        else:
+            usage = cmd_name
     elif cmd_name in commands:
         cmd = commands[cmd_name]
         desc = cmd.desc
@@ -260,6 +289,8 @@ def show_command_help(cmd_name: str, commands: dict):
             usage = "netconfig <adapter_name> | reset <adapter> | dhcp release/renew <adapter>"
         elif cmd_name == "port":
             usage = "port <port_number | program_name>"
+        elif cmd_name in ("alias", "doskey"):
+            usage = f"{cmd_name} [name='command']\n[bold cyan]Examples:[/bold cyan]\n  {cmd_name}\n  {cmd_name} ll='ls -l'\n  {cmd_name} myip='curl ifconfig.me'"
         else:
             if cmd.needs_arg:
                 kind = cmd.arg_completion_kind or "name/path"
@@ -311,7 +342,7 @@ def show_context_help(words: list[str], commands: dict):
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "create":
-        matched_sub, _ = resolve_subcommand(subcmd, ["folder", "file", "venv"])
+        matched_sub, _ = resolve_subcommand(subcmd, ["folder", "file", "shortcut", "venv"])
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "find":
@@ -567,7 +598,7 @@ def show_context_help(words: list[str], commands: dict):
         return
 
     # --- Simple zero-arg commands ---
-    if resolved in ("cancel", "sysinfo", "processes", "containers", "back", "alias", "ip", "update"):
+    if resolved in ("cancel", "sysinfo", "processes", "containers", "back", "ip", "update"):
         console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return
 
@@ -591,17 +622,26 @@ def show_context_help(words: list[str], commands: dict):
 
     if resolved in ("remove", "mkdir"):
         if not subcmd:
-            console.print(Panel(f"[yellow]<path>[/yellow]  Specify the file or folder to {resolved if resolved == 'remove' else 'create'}", title=title, border_style="cyan", expand=False))
+            if resolved == "remove":
+                console.print(Panel("[yellow]shortcut <name>[/yellow]  Remove a CLI shortcut\n[yellow]<path>[/yellow]  Specify the file or folder to remove", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("[yellow]<path>[/yellow]  Specify the folder to create", title=title, border_style="cyan", expand=False))
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            if resolved == "remove" and subcmd == "shortcut":
+                if not rest:
+                    console.print(Panel("[yellow]<name>[/yellow]  Specify the shortcut alias name to remove", title=title, border_style="cyan", expand=False))
+                else:
+                    console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return
 
     if resolved == "create":
-        console.print("[cyan]Enter name to create here or full path[/cyan]")
         if not subcmd:
             table = Table(show_header=False, box=None, padding=(0, 2))
             table.add_row("[green]folder[/green]", "Create a new directory (including parent directories)")
             table.add_row("[green]file[/green]", "Create a new empty file")
+            table.add_row("[green]shortcut[/green]", "Create a CLI shortcut (alias)")
             table.add_row("[green]venv[/green]", "Create a new Python virtual environment")
             console.print(Panel(table, title=title, border_style="cyan", expand=False))
         elif subcmd == "folder":
@@ -614,13 +654,18 @@ def show_context_help(words: list[str], commands: dict):
                 console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to create", title=title, border_style="cyan", expand=False))
             else:
                 console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "shortcut":
+            if not rest:
+                console.print(Panel("Press ENTER to open the interactive shortcut wizard.", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         elif subcmd == "venv":
             if not rest:
                 console.print(Panel("[yellow]<path>[/yellow]  Specify the path where the new virtual environment should be created", title=title, border_style="cyan", expand=False))
             else:
                 console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         else:
-            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected 'folder', 'file', or 'venv'.", title=title, border_style="cyan", expand=False))
+            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected 'folder', 'file', 'shortcut', or 'venv'.", title=title, border_style="cyan", expand=False))
         return
 
     if resolved == "show":
@@ -1188,7 +1233,7 @@ def execute_line(
                 intended_words.extend(rest)
         elif name == "create" and rest:
             sub_token = rest[0].lower()
-            valid_subs = ["folder", "file", "venv"]
+            valid_subs = ["folder", "file", "shortcut", "venv"]
             subcmd, _ = resolve_subcommand(sub_token, valid_subs)
             if subcmd:
                 intended_words.append(subcmd)
@@ -1257,6 +1302,41 @@ def execute_line(
                     console.print(f"[red]Command failed: {e}[/red]")
         return True
 
+    if name in ("alias", "doskey"):
+        arg_str = " ".join(rest)
+        if "=" in arg_str:
+            alias_name, alias_val = arg_str.split("=", 1)
+            alias_name = alias_name.strip()
+            alias_val = alias_val.strip()
+            if alias_val and alias_val[0] in ("'", '"') and alias_val[-1] == alias_val[0]:
+                alias_val = alias_val[1:-1]
+            if alias_val.endswith(" $*"):
+                alias_val = alias_val[:-3]
+            aliases[alias_name] = alias_val
+            console.print(f"[green]Shortcut added (Temporary)![/green] {alias_name} → {alias_val}")
+            return True
+        elif not arg_str or arg_str.lower() == "/macros":
+            if aliases:
+                console.print("\n[bold cyan]Active Shortcuts:[/bold cyan]")
+                for k, v in sorted(aliases.items()):
+                    console.print(f"  [green]{k}[/green]=" + (f"'{v}'" if " " in v else v))
+            else:
+                console.print("[yellow]No shortcuts are currently active.[/yellow]")
+            return True
+        else:
+            translated = translate_cross_platform(tokens)
+            if translated is not None:
+                try:
+                    run_shell_line(translated, shell)
+                except Exception as e:
+                    console.print(f"[red]Command failed: {e}[/red]")
+            else:
+                try:
+                    run_shell_line(" ".join(tokens), shell)
+                except Exception as e:
+                    console.print(f"[red]Command failed: {e}[/red]")
+            return True
+
     if name == "help":
         print_help(commands, manager)
         return True
@@ -1298,12 +1378,12 @@ def execute_line(
 
     if name == "show":
         if not rest:
-            console.print("[yellow]Usage: show [file|start|end|tree|env|history|arp|mac|gateway|ip|route|hostname] [arguments][/yellow]")
+            console.print("[yellow]Usage: show [file|start|end|tree|env|history|arp|mac|gateway|ip|route|hostname|shortcut] [arguments][/yellow]")
             return True
         sub_token = rest[0].lower()
         subargs = rest[1:]
         
-        valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname"]
+        valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname", "shortcut"]
         subcmd, matches = resolve_subcommand(sub_token, valid_subs)
         
         if not subcmd:
@@ -1364,6 +1444,46 @@ def execute_line(
                     console.print(f"  [cyan]{i:5}[/cyan]  {cmd_entry}")
             else:
                 console.print("[yellow]No command history available in this session.[/yellow]")
+        elif subcmd == "shortcut":
+            from rich.table import Table
+            table = Table(title="CLI Shortcuts (Aliases)", show_header=True, header_style="bold cyan")
+            table.add_column("Shortcut Name", style="cyan")
+            table.add_column("Command", style="yellow")
+            table.add_column("Persistence", style="magenta")
+
+            rc = shell_rc_file(shell)
+            permanent_aliases = {}
+            if os.path.isfile(rc):
+                try:
+                    with open(rc, "r") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("alias "):
+                                parts = line[6:].split("=", 1)
+                                if len(parts) == 2:
+                                    permanent_aliases[parts[0]] = parts[1].strip("'\"")
+                            elif line.startswith("doskey "):
+                                parts = line[7:].split("=", 1)
+                                if len(parts) == 2:
+                                    permanent_aliases[parts[0]] = parts[1].replace(" $*", "")
+                            elif line.startswith("abbr --add "):
+                                parts = line[11:].split(" ", 1)
+                                if len(parts) == 2:
+                                    permanent_aliases[parts[0]] = parts[1].strip("'\"")
+                except Exception:
+                    pass
+            
+            all_keys = set(aliases.keys()).union(permanent_aliases.keys())
+            if not all_keys:
+                console.print("[yellow]No shortcuts found.[/yellow]")
+                return True
+                
+            for k in sorted(all_keys):
+                val = aliases.get(k, permanent_aliases.get(k))
+                persistence = "[bold green]Permanent[/bold green]" if k in permanent_aliases else "[bold yellow]Temporary[/bold yellow]"
+                table.add_row(k, val, persistence)
+                
+            console.print(table)
         elif subcmd == "arp":
             real_cmd = (["arp", "-a"] + subargs) if IS_WINDOWS else ((["arp", "-an"] + subargs) if IS_MACOS else (["ip", "neigh"] + subargs))
             try:
@@ -1484,40 +1604,6 @@ def execute_line(
             console.print(f"[red]{e}[/red]")
         return True
 
-    if name == "alias":
-        shell_name = os.path.basename(shell)
-        rc = shell_rc_file(shell)
-        try:
-            console.print(f"\n[bold cyan]Alias Wizard[/bold cyan]  (shell: [green]{shell_name}[/green]  •  rc: [dim]{rc}[/dim])")
-            alias_name = prompt(
-                [("class:prompt", "Alias name (shortcut): ")],
-                completer=DummyCompleter(), style=create_prompt_style(get_active_theme())
-            ).strip()
-            if not alias_name:
-                console.print("[red]Alias name cannot be empty. Aborting.[/red]")
-                return True
-            if " " in alias_name:
-                console.print("[red]Alias name must not contain spaces. Aborting.[/red]")
-                return True
-            alias_val = prompt(
-                [("class:prompt", f"Command for '{alias_name}': ")],
-                completer=DummyCompleter(), style=create_prompt_style(get_active_theme())
-            ).strip()
-            if not alias_val:
-                console.print("[red]Command cannot be empty. Aborting.[/red]")
-                return True
-
-            rc_path = write_alias_to_rc(shell, alias_name, alias_val)
-            # Also register it live for this session
-            aliases[alias_name] = alias_val
-            console.print(f"[bold green]Alias added![/bold green] [cyan]{alias_name}[/cyan] → [yellow]{alias_val}[/yellow]")
-            if IS_WINDOWS:
-                console.print(f"[dim]Saved to {rc_path} — run it in a new Command Prompt to apply globally.[/dim]")
-            else:
-                console.print(f"[dim]Saved to {rc_path} — run 'source {rc_path}' in a new terminal to apply globally.[/dim]")
-        except KeyboardInterrupt:
-            console.print("\n[dim]Cancelled.[/dim]")
-        return True
 
     # ── Universal file-system operations (Python shutil) ─────────────────
     if name == "copy":
@@ -1552,8 +1638,21 @@ def execute_line(
 
     if name == "remove":
         if not rest:
-            console.print("[yellow]Usage: remove <path>[/yellow]")
+            console.print("[yellow]Usage: remove [shortcut] <path_or_name>[/yellow]")
             return True
+            
+        sub_token = rest[0].lower()
+        if sub_token == "shortcut":
+            if len(rest) < 2:
+                console.print("[yellow]Usage: remove shortcut <name>[/yellow]")
+                return True
+            alias_name = rest[1]
+            if alias_name in aliases:
+                del aliases[alias_name]
+            rc_path = remove_alias_from_rc(shell, alias_name)
+            console.print(f"[green]Removed shortcut:[/green] {alias_name}")
+            return True
+
         target = os.path.expanduser(rest[0])
         try:
             if os.path.isdir(target):
@@ -1591,14 +1690,60 @@ def execute_line(
             console.print("[yellow]Usage: create [folder|file|venv] <path>[/yellow]")
             return True
         sub_token = rest[0].lower()
-        valid_subs = ["folder", "file", "venv"]
+        valid_subs = ["folder", "file", "shortcut", "venv"]
         sub, matches = resolve_subcommand(sub_token, valid_subs)
         if not sub:
             if len(matches) > 1:
                 console.print(f"[red]Ambiguous option '{sub_token}'. Candidates: {', '.join(matches)}[/red]")
             else:
-                console.print(f"[red]Unknown option '{sub_token}'. Expected 'folder', 'file', or 'venv'.[/red]")
+                console.print(f"[red]Unknown option '{sub_token}'. Expected 'folder', 'file', 'shortcut', or 'venv'.[/red]")
             return True
+            
+        if sub == "shortcut":
+            shell_name = os.path.basename(shell)
+            rc = shell_rc_file(shell)
+            try:
+                console.print(f"\n[bold cyan]Shortcut Wizard[/bold cyan]  (shell: [green]{shell_name}[/green])")
+                alias_name = prompt(
+                    [("class:prompt", "Shortcut name: ")],
+                    completer=DummyCompleter(), style=create_prompt_style(get_active_theme())
+                ).strip()
+                if not alias_name:
+                    console.print("[red]Shortcut name cannot be empty. Aborting.[/red]")
+                    return True
+                if " " in alias_name:
+                    console.print("[red]Shortcut name must not contain spaces. Aborting.[/red]")
+                    return True
+                alias_val = prompt(
+                    [("class:prompt", f"Command for '{alias_name}': ")],
+                    completer=DummyCompleter(), style=create_prompt_style(get_active_theme())
+                ).strip()
+                if not alias_val:
+                    console.print("[red]Command cannot be empty. Aborting.[/red]")
+                    return True
+                
+                ans_completer = WordCompleter(["Permanent", "Temporary"], ignore_case=True)
+                ans = prompt(
+                    [("class:prompt", "Type (Permanent/Temporary): ")],
+                    completer=ans_completer, style=create_prompt_style(get_active_theme())
+                ).strip().lower()
+                
+                aliases[alias_name] = alias_val
+                
+                if ans == "permanent":
+                    rc_path = write_alias_to_rc(shell, alias_name, alias_val)
+                    console.print(f"[bold green]Shortcut added (Permanent)![/bold green] [cyan]{alias_name}[/cyan] → [yellow]{alias_val}[/yellow]")
+                    if IS_WINDOWS:
+                        console.print(f"[dim]Saved to {rc_path} — run it in a new Command Prompt to apply globally.[/dim]")
+                    else:
+                        console.print(f"[dim]Saved to {rc_path} — it will apply to new terminal sessions automatically.[/dim]")
+                else:
+                    console.print(f"[bold green]Shortcut added (Temporary)![/bold green] [cyan]{alias_name}[/cyan] → [yellow]{alias_val}[/yellow]")
+                    console.print("[dim]This shortcut will only work during this Hopit session.[/dim]")
+            except KeyboardInterrupt:
+                console.print("\n[dim]Cancelled.[/dim]")
+            return True
+
         if len(rest) < 2:
             console.print("[cyan]Enter name to create here or full path[/cyan]")
             console.print(f"[yellow]Usage: create {sub} <path>[/yellow]")

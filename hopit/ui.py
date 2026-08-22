@@ -182,7 +182,7 @@ def get_git_completions(words: list[str]) -> list[tuple[str, str]]:
     return []
 
 
-def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tuple[str, str]]:
+def get_user_group_perm_completions(words: list[str], commands: dict, aliases_dict: dict = None) -> list[tuple[str, str]]:
     if len(words) < 2:
         return []
     cmd = words[0].lower()
@@ -407,10 +407,13 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
             create_subs = {
                 "folder": "Create a new directory (including parent directories)",
                 "file": "Create a new empty file",
+                "shortcut": "Create a CLI shortcut (alias)",
                 "venv": "Create a new Python virtual environment",
             }
             return [(k, v) for k, v in create_subs.items()]
         elif len(words) >= 3:
+            if words[1].lower() == "shortcut":
+                return []
             from hopit.loaders import load_path_entries
             word = words[-1]
             paths = load_path_entries(word)
@@ -436,6 +439,45 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
         if len(words) == 2:
             return [("venv", "Exit (deactivate) the current Python virtual environment")]
 
+    elif cmd == "remove":
+        if len(words) == 2:
+            from hopit.loaders import load_path_entries
+            word = words[-1]
+            paths = load_path_entries(word)
+            completions = [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+            if "shortcut".startswith(word.lower()):
+                completions.insert(0, ("shortcut", "Remove a CLI shortcut (alias)"))
+            return completions
+        elif len(words) == 3 and words[1].lower() == "shortcut":
+            from hopit.main import shell_rc_file
+            rc = shell_rc_file(os.environ.get("SHELL", "/bin/bash"))
+            aliases = []
+            if aliases_dict:
+                for k in aliases_dict.keys():
+                    aliases.append((k, "CLI shortcut (alias)"))
+            if os.path.isfile(rc):
+                try:
+                    with open(rc, "r") as f:
+                        for line in f:
+                            line = line.strip()
+                            name = None
+                            if line.startswith("alias "):
+                                name = line[6:].split("=")[0]
+                            elif line.startswith("doskey "):
+                                name = line[7:].split("=")[0]
+                            elif line.startswith("abbr --add "):
+                                name = line[11:].split(" ")[0]
+                            if name and not any(a[0] == name for a in aliases):
+                                aliases.append((name, "CLI shortcut (alias)"))
+                except Exception:
+                    pass
+            return aliases
+        elif len(words) >= 2 and words[1].lower() != "shortcut":
+            from hopit.loaders import load_path_entries
+            word = words[-1]
+            paths = load_path_entries(word)
+            return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+
 
     elif cmd == "show":
         if len(words) == 2:
@@ -452,6 +494,7 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 "ip": "Show IP addresses and network interfaces",
                 "route": "View the system network routing table",
                 "hostname": "View or change the system's host name",
+                "shortcut": "View all CLI shortcuts (aliases) and their state",
             }
             return [(k, v) for k, v in show_subs.items()]
         elif len(words) >= 3:
@@ -725,7 +768,7 @@ class LazyCompleter(Completer):
         aliases_to_hide = {
             "permissions", "drive", "compress", "ps", "where", "findcommand",
             "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-            "scrollfile", "findfile", "findtext", "whereami", "kubernetes"
+            "scrollfile", "findfile", "findtext", "whereami", "kubernetes", "doskey"
         }
         self.all_names = [k for k in commands if k not in aliases_to_hide] + list(BUILTIN_DESCRIPTIONS.keys())
 
@@ -813,8 +856,8 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "netconfig", "schedule", "crontab", "schtasks"):
-                candidates = get_user_group_perm_completions(words, self.commands)
+            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "remove", "netconfig", "schedule", "crontab", "schtasks"):
+                candidates = get_user_group_perm_completions(words, self.commands, getattr(self, "aliases", None))
                 word_lower = word.lower()
                 matches = []
                 for cand, meta in candidates:
@@ -840,7 +883,15 @@ class LazyCompleter(Completer):
             elif resolved == "create":
                 if len(words) >= 3:
                     sub = words[1].lower() if len(words) > 1 else ""
-                    if sub not in ("folder", "file", "venv"):
+                    if sub == "shortcut":
+                        yield Completion(
+                            "",
+                            start_position=0,
+                            display="💡 Press ENTER to open the shortcut wizard",
+                            display_meta="info"
+                        )
+                        return
+                    elif sub not in ("folder", "file", "venv"):
                         pass
                     else:
                         yield Completion(
@@ -849,7 +900,7 @@ class LazyCompleter(Completer):
                             display="💡 Enter name to create here or full path",
                             display_meta="info"
                         )
-                candidates = get_user_group_perm_completions(words, self.commands)
+                candidates = get_user_group_perm_completions(words, self.commands, self.aliases)
                 word_lower = word.lower()
                 matches = []
                 for cand, meta in candidates:
@@ -987,6 +1038,7 @@ def print_help(commands: dict, manager: str | None):
         "create": [
             ("folder", "Create a folder (mkdir -p): create folder <path>"),
             ("file", "Create an empty file: create file <path>"),
+            ("shortcut", "Create a CLI shortcut (alias): create shortcut"),
             ("venv", "Create a Python virtual environment: create venv <path>"),
         ],
         "enter": [
@@ -1130,7 +1182,7 @@ def print_help(commands: dict, manager: str | None):
         ],
         "⚙️ Process & System Resources": [
             "processes", "process", "top", "kill", "pkill", "killport", "sysinfo", "resources", "sqlite",
-            "containers", "config", "alias", "history", "env", "which", "reboot",
+            "containers", "config", "history", "env", "which", "reboot",
             "shutdown", "cancel", "port"
         ],
         "🌐 Network & Web Diagnostics": [
@@ -1163,7 +1215,7 @@ def print_help(commands: dict, manager: str | None):
     aliases_to_hide = {
         "permissions", "drive", "compress", "ps", "where", "findcommand",
         "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-        "scrollfile", "findfile", "findtext", "whereami", "kubernetes"
+        "scrollfile", "findfile", "findtext", "whereami", "kubernetes", "doskey"
     }
 
     misc = []
