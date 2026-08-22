@@ -809,6 +809,8 @@ def show_context_help(words: list[str], commands: dict):
             table.add_row("[green]mount <dev> <target>[/green]", "Mount a drive or partition")
             table.add_row("[green]unmount <target>[/green]", "Unmount a mounted drive volume")
             table.add_row("[green]check <target>[/green]", "Perform filesystem integrity check (fsck/chkdsk)")
+            table.add_row("[green]health [target][/green]", "Check disk health / SMART status")
+            table.add_row("[green]format <dev> <fs>[/green]", "Format a device with a filesystem (Destructive)")
             console.print(Panel(table, title=title, border_style="cyan", expand=False))
         else:
             console.print(Panel("Specify required device or path arguments.", title=title, border_style="cyan", expand=False))
@@ -1653,7 +1655,7 @@ def execute_line(
             return True
 
         sub_token = rest[0].lower()
-        valid_subs = ["list", "usage", "mount", "unmount", "check"]
+        valid_subs = ["list", "usage", "mount", "unmount", "check", "health", "format"]
         subcmd, matches = resolve_subcommand(sub_token, valid_subs)
         if not subcmd:
             if len(matches) > 1:
@@ -1737,6 +1739,138 @@ def execute_line(
                 console.print(f"[red]'{real_cmd[0]}' not found on this system.[/red]")
             except KeyboardInterrupt:
                 console.print("\n[dim]Stopped.[/dim]")
+            return True
+
+        elif subcmd == "health":
+            # For Windows, no target required as Get-PhysicalDisk returns all
+            if IS_WINDOWS:
+                subargs = []
+            elif not subargs:
+                console.print("[bold cyan]\n🩺 Disk Health — Select Target[/bold cyan]")
+                candidates = []
+                for dev, desc in load_block_devices():
+                    candidates.append((dev, f"[device]   {desc}"))
+                if not candidates:
+                    console.print("[yellow]No block devices found. Enter device path manually:[/yellow]")
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Target device (e.g. /dev/sda): ")],
+                            completer=DummyCompleter(), style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                    if not target:
+                        console.print("[red]No target specified. Aborting.[/red]")
+                        return True
+                    subargs = [target]
+                else:
+                    dev_completer = WordCompleter([c[0] for c in candidates], ignore_case=True)
+                    console.print("[dim]Tab to browse devices, Enter to select[/dim]")
+                    for dev, desc in candidates:
+                        console.print(f"  [cyan]{dev:<20}[/cyan]  [dim]{desc}[/dim]")
+                    console.print()
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Target device: ")],
+                            completer=dev_completer, style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                    if not target:
+                        console.print("[red]No target selected. Aborting.[/red]")
+                        return True
+                    subargs = [target]
+
+            real_cmd = with_privilege(disk_cmd("health " + " ".join(subargs)), True)
+            if not real_cmd:
+                console.print("[red]Could not build health command for this platform.[/red]")
+                return True
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="health", show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]disk health: {e}[/red]")
+            return True
+
+        elif subcmd == "format":
+            if not subargs:
+                console.print("[bold red]\n⚠️  Format — Destructive Operation[/bold red]")
+                candidates = []
+                for dev, desc in load_block_devices():
+                    candidates.append((dev, f"[device]   {desc}"))
+                if not candidates:
+                    console.print("[yellow]No block devices found. Enter device path manually:[/yellow]")
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Device to format (e.g. /dev/sdb1): ")],
+                            completer=DummyCompleter(), style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                else:
+                    dev_completer = WordCompleter([c[0] for c in candidates], ignore_case=True)
+                    console.print("[dim]Tab to browse devices, Enter to select[/dim]")
+                    for dev, desc in candidates:
+                        console.print(f"  [cyan]{dev:<20}[/cyan]  [dim]{desc}[/dim]")
+                    console.print()
+                    try:
+                        target = prompt(
+                            [("class:prompt", "Device to format: ")],
+                            completer=dev_completer, style=current_style
+                        ).strip()
+                    except KeyboardInterrupt:
+                        console.print("\n[dim]Cancelled.[/dim]")
+                        return True
+                
+                if not target:
+                    console.print("[red]No device selected. Aborting.[/red]")
+                    return True
+
+                fs_options = ["ext4", "ntfs", "vfat", "exfat", "btrfs"] if not IS_MACOS else ["APFS", "ExFAT", "MS-DOS", "HFS+"]
+                fs_completer = WordCompleter(fs_options, ignore_case=True)
+                console.print(f"[dim]Available filesystems: {', '.join(fs_options)}[/dim]")
+                try:
+                    fs = prompt(
+                        [("class:prompt", "Filesystem type: ")],
+                        completer=fs_completer, style=current_style
+                    ).strip()
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Cancelled.[/dim]")
+                    return True
+
+                if not fs:
+                    console.print("[red]No filesystem specified. Aborting.[/red]")
+                    return True
+                
+                console.print(f"\n[bold red]WARNING: This will permanently erase ALL data on {target} and format it as {fs}.[/bold red]")
+                try:
+                    confirm = prompt(
+                        [("class:prompt", "Type 'YES' to confirm destruction of data: ")],
+                        completer=DummyCompleter(), style=current_style
+                    ).strip()
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Cancelled.[/dim]")
+                    return True
+
+                if confirm != "YES":
+                    console.print("[green]Format cancelled. Your data is safe.[/green]")
+                    return True
+                
+                subargs = [target, fs]
+                
+            real_cmd = with_privilege(disk_cmd("format " + " ".join(subargs)), True)
+            if not real_cmd:
+                console.print("[red]Could not build format command for this platform.[/red]")
+                return True
+            try:
+                console.print(f"[cyan]Formatting {subargs[0]} as {subargs[1]}...[/cyan]")
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="format", show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]disk format: {e}[/red]")
             return True
 
         elif subcmd == "unmount":

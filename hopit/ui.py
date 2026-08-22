@@ -334,6 +334,8 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 "mount":   "Mount a drive or partition",
                 "unmount": "Unmount a mounted volume",
                 "check":   "Perform filesystem integrity check",
+                "health":  "Check disk health / SMART status",
+                "format":  "Format a partition (Destructive)",
             }
             return [(k, v) for k, v in disk_subs.items()]
 
@@ -346,18 +348,27 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
             paths = load_path_entries(word)
             return [(p, "📁 folder") for p in paths if p.endswith("/") or os.path.isdir(p)]
 
-        elif sub == "check":
-            # Show mounted filesystems + block devices for fsck/chkdsk
+        elif sub in ("check", "health"):
+            # Show mounted filesystems + block devices for fsck/chkdsk/smart
             from hopit.loaders import load_mount_points, load_block_devices
             if len(words) == 3:
                 candidates = []
-                # First: mounted filesystems (most useful for check)
                 for mnt, desc in load_mount_points():
                     candidates.append((mnt, f"🔧 {desc}"))
-                # Also include raw block devices
                 for dev, desc in load_block_devices():
                     candidates.append((dev, f"💾 {desc}"))
                 return candidates
+            return []
+
+        elif sub == "format":
+            from hopit.loaders import load_block_devices
+            if len(words) == 3:
+                # Show block devices
+                return [(dev, f"💾 {desc} (Destructive)") for dev, desc in load_block_devices()]
+            elif len(words) == 4:
+                # Show filesystems
+                fs = ["ext4", "ntfs", "vfat", "exfat", "btrfs"] if not IS_MACOS else ["APFS", "ExFAT", "MS-DOS", "HFS+"]
+                return [(f, "📂 filesystem") for f in fs]
             return []
 
         elif sub == "unmount":
@@ -1023,6 +1034,8 @@ def print_help(commands: dict, manager: str | None):
             ("mount", "Mount a drive or partition: disk mount <dev> <target>"),
             ("unmount", "Unmount a mounted volume: disk unmount <target>"),
             ("check", "Perform filesystem integrity check: disk check <target>"),
+            ("health", "Check disk health / SMART status: disk health [target]"),
+            ("format", "Format a partition: disk format <dev> <fs>"),
         ],
         "archive": [
             ("create", "Create a compressed archive: archive create <out.zip> <path>"),

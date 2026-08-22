@@ -520,6 +520,25 @@ def disk_cmd(arg: str) -> list[str]:
         if shutil.which("e2fsck"):
             return ["e2fsck", "-p", target]
         return ["fsck", target]
+    elif sub == "health":
+        if IS_WINDOWS:
+            return ps_command("Get-PhysicalDisk | Select-Object DeviceId, MediaType, OperationalStatus, HealthStatus | Format-Table -AutoSize")
+        if not target:
+            return []
+        if IS_MACOS:
+            return ["diskutil", "info", target]
+        if shutil.which("smartctl"):
+            return ["smartctl", "-H", target]
+        return ["echo", "smartctl is required on Linux for disk health checks. Please install smartmontools."]
+    elif sub == "format":
+        if len(rest) >= 2:
+            dev, fs = rest[0], rest[1]
+            if IS_WINDOWS:
+                return ["format", dev, f"/FS:{fs.upper()}", "/Q", "/Y"]
+            if IS_MACOS:
+                return ["diskutil", "eraseVolume", fs, "Untitled", dev]
+            return [f"mkfs.{fs}", dev]
+        return []
     return []
 
 
