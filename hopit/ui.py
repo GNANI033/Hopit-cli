@@ -761,7 +761,7 @@ def print_help(commands: dict, manager: str | None):
             "pwd", "touch", "cat", "head", "tail", "less", "tree", "find", "grep", "search", "disk"
         ],
         "🐍 Python Virtual Environments": [
-            "enter",
+            "create", "enter",
         ],
         "⚙️ Process & System Resources": [
             "processes", "process", "top", "kill", "pkill", "killport", "sysinfo", "resources", "sqlite",
@@ -834,8 +834,25 @@ def print_help(commands: dict, manager: str | None):
             # Render subcommands if available
             clean_name = name.split()[0].strip()
             if clean_name in SUBCOMMANDS:
-                for sub_name, sub_desc in SUBCOMMANDS[clean_name]:
+                # In the Python venv section, only show the 'venv' subcommand for 'create'
+                subs = SUBCOMMANDS[clean_name]
+                if "Python Virtual" in cat_title and clean_name == "create":
+                    subs = [(s, d) for s, d in subs if s == "venv"]
+                for sub_name, sub_desc in subs:
                     table.add_row(f"  ↳ [cyan]{sub_name}[/cyan]", f"[dim]{sub_desc}[/dim]", f"[dim]{compat}[/dim]")
+
+        # Inject 'exit venv' for the Python venv section (it's a builtin, not in commands)
+        if "Python Virtual" in cat_title:
+            table.add_row(
+                "exit",
+                "Deactivate the current virtual environment: exit venv (prefix ok: exit v)",
+                "L | M | W"
+            )
+            table.add_row(
+                "  ↳ [cyan]venv[/cyan]",
+                "[dim]Exit (deactivate) the currently active Python virtual environment[/dim]",
+                "[dim]L | M | W[/dim]"
+            )
             
         console.print(table)
         console.print()
