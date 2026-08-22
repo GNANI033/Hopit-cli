@@ -1,9 +1,8 @@
 import os
 import sys
-from rich.console import Console
+from hopit.config import console
 
 def main():
-    console = Console()
     if len(sys.argv) < 2:
         console.print("[yellow]Usage: touch <file_path>[/yellow]")
         sys.exit(1)

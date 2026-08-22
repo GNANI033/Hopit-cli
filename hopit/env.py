@@ -1,10 +1,9 @@
 import os
 import sys
-from rich.console import Console
+from hopit.config import console
 from rich.table import Table
 
 def main():
-    console = Console()
     query = sys.argv[1].lower() if len(sys.argv) > 1 else None
     
     table = Table(title="Environment Variables", show_header=True, header_style="bold magenta")

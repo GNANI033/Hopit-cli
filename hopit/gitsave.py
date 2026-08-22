@@ -1,9 +1,8 @@
 import sys
 import subprocess
-from rich.console import Console
+from hopit.config import console
 
 def main():
-    console = Console()
     if len(sys.argv) < 2:
         console.print("[bold red]Error:[/bold red] Please provide a commit message. Example: [yellow]gitsave fixed layout bug[/yellow]")
         sys.exit(1)

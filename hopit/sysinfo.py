@@ -141,15 +141,23 @@ def main():
     pct_disk = (used_disk / total_disk) * 100
     disk_str = f"{format_size(used_disk)} / {format_size(total_disk)} ({pct_disk:.1f}% used)"
 
-    print("System Information:")
-    print("-------------------")
-    print(f"OS: {os_name}")
-    print(f"Kernel: {kernel}")
-    print(f"Hostname: {hostname}")
-    print(f"Uptime: {uptime}")
-    print(f"CPU: {cpu}")
-    print(f"Memory: {mem_str}")
-    print(f"Disk: {disk_str}")
+    from hopit.config import console
+    from rich.table import Table
+    from rich.panel import Panel
+
+    table = Table.grid(padding=(0, 2))
+    table.add_column("Key", style="bold cyan")
+    table.add_column("Val")
+    
+    table.add_row("OS", os_name)
+    table.add_row("Kernel", kernel)
+    table.add_row("Hostname", hostname)
+    table.add_row("Uptime", uptime)
+    table.add_row("CPU", cpu)
+    table.add_row("Memory", mem_str)
+    table.add_row("Disk", disk_str)
+    
+    console.print(Panel(table, title="[bold green]💻 System Information[/bold green]", border_style="cyan", expand=False))
 
 if __name__ == "__main__":
     main()

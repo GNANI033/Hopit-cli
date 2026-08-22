@@ -1,10 +1,9 @@
 import os
 import sys
-from rich.console import Console
+from hopit.config import console
 from rich.syntax import Syntax
 
 def main():
-    console = Console()
     args = sys.argv[1:]
     if not args:
         console.print("[yellow]Usage: head [-n lines] <file_path>[/yellow]")
@@ -63,7 +62,8 @@ def main():
                 console.print(f"\n[bold magenta]=== {path} ===[/bold magenta]")
                 
             try:
-                syntax = Syntax(content, lexer, theme="monokai", line_numbers=True)
+                from hopit.config import get_syntax_theme
+                syntax = Syntax(content, lexer, theme=get_syntax_theme(), line_numbers=True)
                 console.print(syntax)
             except Exception:
                 console.print(content)

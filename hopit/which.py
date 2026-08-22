@@ -1,9 +1,8 @@
 import sys
 import shutil
-from rich.console import Console
+from hopit.config import console
 
 def main():
-    console = Console()
     if len(sys.argv) < 2:
         console.print("[yellow]Usage: which <command_name>[/yellow]")
         sys.exit(1)

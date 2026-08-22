@@ -31,8 +31,28 @@ if IS_WINDOWS:
         os.environ.setdefault("PROMPT_TOOLKIT_COLOR_DEPTH", "DEPTH_24_BIT")
 
 THEMES = {
+    "hopit": {
+        "name": "Hopit Green (Default)",
+        "hopit": "#b8d769",   # Bright lime green (Base)
+        "user": "#c6df87",    # Light lime green (20% Tint)
+        "cwd": "#d4e7a5",     # Lighter lime green (40% Tint)
+        "git": "#eaf3d2",     # Soft green-white (70% Tint)
+        "time": "#f8fbf0",    # Very light green-white (90% Tint)
+        "text": "#262d16",    # Deep forest green (text contrast)
+        "border": "#b8d769",  # Accent green
+    },
+    "hopit-dark": {
+        "name": "Hopit Dark",
+        "hopit": "#35433f",   # Dark base slate-green (0% Tint)
+        "user": "#727b79",    # Medium slate-green (30% Tint)
+        "cwd": "#9aa19f",     # Medium-light slate-green (50% Tint)
+        "git": "#c2c7c5",     # Light slate-green (70% Tint)
+        "time": "#ebecec",    # Very light slate-green (90% Tint)
+        "text": "#111111",    # Dark text for high contrast on light backgrounds
+        "border": "#b8d769",  # Accent green
+    },
     "catppuccin": {
-        "name": "Catppuccin Mocha (Default)",
+        "name": "Catppuccin Mocha",
         "hopit": "#f38ba8", # Red / Pink
         "user": "#fab387",  # Peach
         "cwd": "#a6e3a1",   # Green
@@ -145,10 +165,7 @@ def get_active_theme_name() -> str:
                     return theme
     except Exception:
         pass
-    return "catppuccin"
-
-def get_active_theme() -> dict:
-    return THEMES[get_active_theme_name()]
+    return "hopit"
 
 # Build the Rich Console with the right color profile.
 if IS_WINDOWS_TERMINAL:
@@ -157,6 +174,57 @@ if IS_WINDOWS_TERMINAL:
 else:
     # Let Rich auto-detect (works on Linux; degrades gracefully on plain cmd).
     console = Console()
+
+_theme_pushed = False
+
+def update_console_theme(theme: dict):
+    global _theme_pushed
+    from rich.theme import Theme
+    if _theme_pushed:
+        try:
+            console.pop_theme()
+        except Exception:
+            pass
+    
+    border_color = theme.get("border", "#b8d769")
+    accent_color = theme.get("hopit", "#b8d769")
+    git_color = theme.get("git", "#c6df87")
+    
+    console.push_theme(Theme({
+        "cyan": border_color,
+        "bold cyan": f"bold {border_color}",
+        "magenta": git_color,
+        "bold magenta": f"bold {git_color}",
+        "green": accent_color,
+        "bold green": f"bold {accent_color}",
+    }))
+    _theme_pushed = True
+
+def get_active_theme() -> dict:
+    theme = THEMES[get_active_theme_name()]
+    update_console_theme(theme)
+    return theme
+
+# Set initial theme on the console
+get_active_theme()
+
+def get_syntax_theme() -> str:
+    theme_name = get_active_theme_name()
+    mapping = {
+        "hopit": "monokai",
+        "hopit-dark": "monokai",
+        "catppuccin": "one-dark",
+        "dracula": "dracula",
+        "nord": "nord",
+        "tokyo-night": "one-dark",
+        "one-dark": "one-dark",
+        "cyberpunk": "monokai",
+        "monokai": "monokai",
+        "gruvbox": "gruvbox-dark",
+        "solarized": "solarized-dark",
+        "synthwave": "monokai",
+    }
+    return mapping.get(theme_name, "monokai")
 
 
 

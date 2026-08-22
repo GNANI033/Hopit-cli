@@ -13,12 +13,11 @@ for pattern in ["~/.local/lib/python*/site-packages", "/home/*/.local/lib/python
             sys.path.insert(0, site_pkg)
 
 try:
-    from rich.console import Console
+    from hopit.config import console
     from rich.table import Table
     from rich.panel import Panel
     from rich.prompt import Prompt, Confirm
     HAS_RICH = True
-    console = Console()
 except ImportError:
     HAS_RICH = False
     console = None

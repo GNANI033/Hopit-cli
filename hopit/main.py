@@ -51,17 +51,27 @@ from hopit.translation import translate_cross_platform
 
 
 def create_prompt_style(theme: dict) -> Style:
+    def get_fg(bg_color: str) -> str:
+        try:
+            bg_color = bg_color.lstrip("#")
+            r, g, b = int(bg_color[0:2], 16), int(bg_color[2:4], 16), int(bg_color[4:6], 16)
+            # YIQ formula for perceived brightness
+            brightness = (r * 299 + g * 587 + b * 114) / 1000
+            return "#111111" if brightness > 128 else "#ffffff"
+        except Exception:
+            return theme.get("text", "#111111")
+
     return Style.from_dict({
-        "hopit": f"bg:{theme['hopit']} fg:{theme['text']} bold",
+        "hopit": f"bg:{theme['hopit']} fg:{get_fg(theme['hopit'])} bold",
         "hopit_sep": f"fg:{theme['hopit']} bg:{theme['user']}",
-        "user": f"bg:{theme['user']} fg:{theme['text']} bold",
+        "user": f"bg:{theme['user']} fg:{get_fg(theme['user'])} bold",
         "user_sep": f"fg:{theme['user']} bg:{theme['cwd']}",
-        "cwd": f"bg:{theme['cwd']} fg:{theme['text']} bold",
+        "cwd": f"bg:{theme['cwd']} fg:{get_fg(theme['cwd'])} bold",
         "cwd_sep": f"fg:{theme['cwd']} bg:{theme['time']}",
         "cwd_sep_git": f"fg:{theme['cwd']} bg:{theme['git']}",
-        "git": f"bg:{theme['git']} fg:{theme['text']} bold",
+        "git": f"bg:{theme['git']} fg:{get_fg(theme['git'])} bold",
         "git_sep": f"fg:{theme['git']} bg:{theme['time']}",
-        "time": f"bg:{theme['time']} fg:{theme['text']} bold",
+        "time": f"bg:{theme['time']} fg:{get_fg(theme['time'])} bold",
         "time_sep": f"fg:{theme['time']}",
         "bottom-toolbar": "bg:#222222 #aaaaaa",
     })

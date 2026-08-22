@@ -24,9 +24,7 @@ def save_config(config):
 
 def main():
     from rich.console import Console
-    from hopit.config import detect_editor, detect_package_manager, get_active_theme_name, THEMES
-
-    console = Console()
+    from hopit.config import detect_editor, detect_package_manager, get_active_theme_name, THEMES, console
     config = load_config()
 
     if len(sys.argv) < 2:

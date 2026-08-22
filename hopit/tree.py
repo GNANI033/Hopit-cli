@@ -1,6 +1,6 @@
 import os
 import sys
-from rich.console import Console
+from hopit.config import console
 from rich.tree import Tree
 from rich.filesize import decimal
 
@@ -30,7 +30,6 @@ def make_tree(directory_path, tree_node, current_depth=0, max_depth=3):
             tree_node.add(f"📄 {entry.name}{size}", style=style)
 
 def main():
-    console = Console()
     target_dir = sys.argv[1] if len(sys.argv) > 1 else "."
     target_dir = os.path.abspath(os.path.expanduser(target_dir))
     

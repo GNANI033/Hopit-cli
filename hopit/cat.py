@@ -1,10 +1,9 @@
 import os
 import sys
-from rich.console import Console
+from hopit.config import console
 from rich.syntax import Syntax
 
 def main():
-    console = Console()
     if len(sys.argv) < 2:
         console.print("[yellow]Usage: cat <file_path>[/yellow]")
         sys.exit(1)
@@ -23,7 +22,8 @@ def main():
             lexer = ext.lstrip(".") if ext else "text"
             
             try:
-                syntax = Syntax(content, lexer, theme="monokai", line_numbers=True)
+                from hopit.config import get_syntax_theme
+                syntax = Syntax(content, lexer, theme=get_syntax_theme(), line_numbers=True)
                 console.print(syntax)
             except Exception:
                 console.print(content)

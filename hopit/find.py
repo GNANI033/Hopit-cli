@@ -1,10 +1,9 @@
 import os
 import sys
 import fnmatch
-from rich.console import Console
+from hopit.config import console
 
 def main():
-    console = Console()
     args = sys.argv[1:]
     
     if not args:

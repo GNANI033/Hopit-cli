@@ -1,10 +1,9 @@
 import os
 import sys
 import re
-from rich.console import Console
+from hopit.config import console
 
 def main():
-    console = Console()
     args = sys.argv[1:]
     if len(args) < 1:
         console.print("[yellow]Usage: grep <pattern> [file_or_directory][/yellow]")

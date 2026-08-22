@@ -1,6 +1,6 @@
 import sys
 import subprocess
-from rich.console import Console
+from hopit.config import console
 
 def run_git(args):
     try:
@@ -25,7 +25,6 @@ def main():
             args = ["commit", "-m", message]
 
     code, stdout, stderr = run_git(args)
-    console = Console()
 
     if code != 0:
         if stderr:

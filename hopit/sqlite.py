@@ -1,6 +1,6 @@
 import sys
 import sqlite3
-from rich.console import Console
+from hopit.config import console
 from rich.table import Table
 
 def main():
@@ -11,8 +11,6 @@ def main():
 
     db_path = sys.argv[1]
     query = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else None
-
-    console = Console()
 
     try:
         conn = sqlite3.connect(db_path)
