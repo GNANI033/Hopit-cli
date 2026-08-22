@@ -494,6 +494,57 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
             adapters = load_adapters()
             return [(adapter, "🌐 adapter") for adapter in adapters]
             
+    elif cmd == "schedule":
+        if len(words) == 2:
+            schedule_subs = {
+                "list": "List all scheduled tasks",
+                "add": "Add a new scheduled task interactively",
+                "remove": "Remove an existing scheduled task",
+                "edit": "Edit the raw scheduled tasks file",
+                "-/": "Pass native arguments directly (e.g. -l, /query)",
+            }
+            return [(k, v) for k, v in schedule_subs.items()]
+            
+    elif cmd == "crontab":
+        if len(words) == 2:
+            return [
+                ("-l", "List your scheduled cron jobs"),
+                ("-e", "Edit your cron jobs interactively"),
+                ("-r", "Remove all of your cron jobs"),
+            ]
+            
+    elif cmd == "schtasks":
+        if len(words) == 2:
+            return [
+                ("/query", "List all scheduled tasks"),
+                ("/create", "Create a new scheduled task"),
+                ("/delete", "Delete an existing scheduled task"),
+            ]
+            
+        sub = words[1].lower()
+        if sub == "remove" and len(words) == 3:
+            try:
+                from hopit.schedule import get_schedule_names
+                names = get_schedule_names()
+                return [(n, "🕒 scheduled task") for n in names]
+            except Exception:
+                pass
+        elif sub == "add":
+            if len(words) == 3:
+                return [("<task_name>", "Name of the task to add (no spaces)")]
+            elif len(words) == 4:
+                return [("<command>", "Shell command to execute")]
+            elif len(words) == 5:
+                return [
+                    ("Minute", "Every minute"),
+                    ("Hourly", "Every hour"),
+                    ("Daily", "Every day at midnight"),
+                    ("Weekly", "Every Sunday"),
+                    ("Monthly", "Every 1st of the month"),
+                    ("Reboot", "At system startup"),
+                    ('"* * * * *"', "Custom cron expression")
+                ]
+            
     return []
 
 
@@ -762,7 +813,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "netconfig"):
+            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "netconfig", "schedule", "crontab", "schtasks"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []

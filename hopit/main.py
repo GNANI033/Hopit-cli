@@ -209,7 +209,7 @@ def show_command_help(cmd_name: str, commands: dict):
         desc = cmd.desc
         sudo_req = cmd.needs_sudo
         
-        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup", "enter", "exit", "k8s", "kubernetes", "kubectl"):
+        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup", "enter", "exit", "k8s", "kubernetes", "kubectl", "schedule", "crontab", "schtasks"):
             show_context_help([cmd_name], commands)
             return
 
@@ -328,6 +328,10 @@ def show_context_help(words: list[str], commands: dict):
             subcmd = matched_sub
     elif resolved == "exit":
         matched_sub, _ = resolve_subcommand(subcmd, ["venv"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "schedule":
+        matched_sub, _ = resolve_subcommand(subcmd, ["list", "add", "remove", "edit"])
         if matched_sub:
             subcmd = matched_sub
 
@@ -514,6 +518,34 @@ def show_context_help(words: list[str], commands: dict):
     if resolved in ("groupdel", "delgroup"):
         if not subcmd:
             console.print(Panel("[yellow]<groupname>[/yellow]  Specify the group to delete", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+        
+    # --- Schedule command context help ---
+    if resolved == "schedule":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]list[/green]", "List all scheduled tasks")
+            table.add_row("[green]add[/green]", "Add a new scheduled task interactively")
+            table.add_row("[green]remove[/green]", "Remove an existing scheduled task")
+            table.add_row("[green]edit[/green]", "Edit the raw scheduled tasks file")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            console.print("[dim]Note: You can also pass native crontab or schtasks arguments directly (e.g. 'schedule -u root -l').[/dim]")
+        elif subcmd == "add":
+            if not rest:
+                console.print(Panel("[yellow]<task_name>[/yellow]  Specify the name of the new task", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1:
+                console.print(Panel("[yellow]<command>[/yellow]    Specify the command to run", title=title, border_style="cyan", expand=False))
+            elif len(rest) == 2:
+                console.print(Panel("[yellow]<timing>[/yellow]     Specify the frequency (e.g. Hourly, Daily, Reboot, or cron expr)", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "remove":
+            if not rest:
+                console.print(Panel("[yellow]<task_name>[/yellow]  Specify the name of the task to remove", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         else:
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return
@@ -861,6 +893,26 @@ def show_context_help(words: list[str], commands: dict):
                 console.print(Panel("[yellow]<path>[/yellow]  Specify the path of the virtual environment to enter/activate", title=title, border_style="cyan", expand=False))
             else:
                 console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # --- crontab context help ---
+    if resolved == "crontab":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]-l[/green]", "List your scheduled cron jobs")
+            table.add_row("[green]-e[/green]", "Edit your cron jobs interactively")
+            table.add_row("[green]-r[/green]", "Remove all of your cron jobs")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        return
+
+    # --- schtasks context help ---
+    if resolved == "schtasks":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]/query[/green]", "List all scheduled tasks")
+            table.add_row("[green]/create[/green]", "Create a new scheduled task")
+            table.add_row("[green]/delete[/green]", "Delete an existing scheduled task")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
         return
 
     if resolved == "exit":
@@ -2175,7 +2227,7 @@ def execute_line(
         console.print(f"[yellow]'{name}' needs an argument, e.g.:[/yellow] {name} <name>")
         return True
 
-    arg = " ".join(rest) if rest else ""
+    arg = shlex.join(rest) if rest else ""
     real_cmd = with_privilege(cmd.run(arg), cmd.needs_sudo)
 
     if cmd.mode == "stream":

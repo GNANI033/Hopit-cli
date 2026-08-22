@@ -428,7 +428,6 @@ _UNIX_TO_WIN: dict = {
     "base64":   lambda a: f'powershell -Command "[Convert]::ToBase64String([IO.File]::ReadAllBytes({_q(a[0])}))"' if a else '',
     "md5sum":   lambda a: f'powershell -Command "Get-FileHash {_files(a)} -Algorithm MD5 | Format-Table"',
     "sha256sum": lambda a: f'powershell -Command "Get-FileHash {_files(a)} -Algorithm SHA256 | Format-Table"',
-    "crontab":  lambda a: 'schtasks ' + _join(a),
     "service":  lambda a: ('sc start ' + _q(a[1]) if len(a)>=2 and a[1]=='start'
                            else 'sc stop ' + _q(a[1]) if len(a)>=2 and a[1]=='stop'
                            else 'sc query ' + (_q(a[0]) if a else '')),
@@ -479,7 +478,6 @@ _WIN_TO_UNIX: dict = {
     "path":     lambda a: 'echo $PATH',
     "help":     lambda a: ('man ' + _q(a[0]) if a else 'help'),
     "assoc":    lambda a: 'xdg-mime query default ' + (_q(a[0]) if a else ''),
-    "schtasks": lambda a: 'crontab -l',
     "ipconfig": lambda a: 'ip a',
     "tracert":  lambda a: 'traceroute ' + _join(a),
     "nslookup": lambda a: 'nslookup ' + _join(a),

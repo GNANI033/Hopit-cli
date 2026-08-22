@@ -542,6 +542,9 @@ def disk_cmd(arg: str) -> list[str]:
     return []
 
 
+def schedule_cmd(arg: str) -> list[str]:
+    return [sys.executable, "-m", "hopit.schedule"] + (shlex.split(arg) if arg else [])
+
 def archive_cmd(arg: str) -> list[str]:
     return [sys.executable, "-m", "hopit.archive"] + (shlex.split(arg) if arg else [])
 
@@ -1066,6 +1069,12 @@ def build_commands(manager: str | None, names: dict) -> dict:
             needs_arg=True,
             mode="capture",
         ),
+        "schedule": Command(
+            run=schedule_cmd,
+            desc="Manage scheduled tasks (interactive/cross-platform): schedule [list|add|remove|edit]",
+            needs_arg=False,
+            mode="stream",
+        ),
         "archive": Command(
             run=archive_cmd,
             desc="Create or extract compressed archives: archive [create|extract] [args]",
@@ -1295,5 +1304,31 @@ def build_commands(manager: str | None, names: dict) -> dict:
             needs_sudo=True,
             mode="stream",
         )
+    def run_crontab(args):
+        args_list = __import__('shlex').split(args) if isinstance(args, str) else args
+        if IS_WINDOWS:
+            return [__import__('sys').executable, "-m", "hopit.schedule", "EMULATE_CRONTAB"] + args_list
+        else:
+            return ["crontab"] + args_list
+
+    def run_schtasks(args):
+        args_list = __import__('shlex').split(args) if isinstance(args, str) else args
+        if not IS_WINDOWS:
+            return [__import__('sys').executable, "-m", "hopit.schedule", "EMULATE_SCHTASKS"] + args_list
+        else:
+            return ["schtasks"] + args_list
+
+    commands["crontab"] = Command(
+        run=run_crontab,
+        desc="Manage scheduled tasks via crontab (native execution)",
+        needs_arg=False,
+        mode="stream",
+    )
+    commands["schtasks"] = Command(
+        run=run_schtasks,
+        desc="Manage scheduled tasks via schtasks (native execution)",
+        needs_arg=False,
+        mode="stream",
+    )
 
     return commands
