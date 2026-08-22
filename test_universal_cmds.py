@@ -216,5 +216,26 @@ class TestUniversalCommands(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir)
 
+    def test_new_network_and_process_registrations(self):
+        from hopit.commands import build_commands
+        names = {
+            "service": lambda: [],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+        new_cmds = [
+            "ping", "traceroute", "dns", "nslookup", "route", "arp", "netstat",
+            "connections", "hostname", "gateway", "mac", "curl", "wget",
+            "ssh", "scp", "sftp", "ps", "process", "kill", "pkill", "top",
+            "resources"
+        ]
+        for cmd in new_cmds:
+            self.assertIn(cmd, cmds, f"{cmd} should be registered in commands dict")
+
 if __name__ == "__main__":
     unittest.main()
