@@ -426,13 +426,184 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
     return []
 
 
+def get_k8s_completions(words: list[str]) -> list[tuple[str, str]]:
+    """
+    Dynamic Kubernetes completions.
+    Returns a list of (value, display_meta) tuples.
+    """
+    from hopit.kubernetes import (
+        K8S_TOP_COMPLETIONS, KUBECTL_SUBCOMMANDS, KUBECTL_RESOURCE_TYPES,
+        load_pods, load_namespaces, load_deployments, load_services,
+        load_nodes, load_contexts, load_containers_in_pod, kubectl_available
+    )
+
+    cmd = words[0].lower()  # 'k8s', 'kubernetes', or 'kubectl'
+    n = len(words)
+
+    # ─── k8s / kubernetes ──────────────────────────────────────
+    if cmd in ("k8s", "kubernetes"):
+        if n == 2:
+            # Show all simple-english verbs
+            return list(K8S_TOP_COMPLETIONS)
+
+        sub = words[1].lower()
+        sub2 = (words[1] + " " + words[2]).lower() if n >= 3 else ""
+
+        # After "logs / follow / exec / sh / pod info / delete pod" → show pods
+        if sub in ("logs", "follow", "tail", "exec", "sh") and n == 3:
+            return [(p, "📦 pod") for p in load_pods()]
+
+        if sub2 in ("pod info", "delete pod") and n == 4:
+            return [(p, "📦 pod") for p in load_pods()]
+
+        # After "restart / scale / deployment info / rollout status/history/undo" → deployments
+        if sub in ("restart", "scale") and n == 3:
+            return [(d, "🚀 deployment") for d in load_deployments()]
+
+        if sub2 in ("deployment info", "rollout status", "rollout history", "rollout undo") and n == 4:
+            return [(d, "🚀 deployment") for d in load_deployments()]
+
+        # After "service info" → services
+        if sub2 == "service info" and n == 4:
+            return [(s, "🌐 service") for s in load_services()]
+
+        # After "node info / drain / cordon / uncordon" → nodes
+        if sub in ("drain", "cordon", "uncordon") and n == 3:
+            return [(node, "🖥️  node") for node in load_nodes()]
+        if sub2 == "node info" and n == 4:
+            return [(node, "🖥️  node") for node in load_nodes()]
+
+        # After "use context / switch context" → contexts
+        if sub in ("use context", "switch context") and n == 4:
+            return [(ctx, "🌍 context") for ctx in load_contexts()]
+
+        # After "apply / delete" with file path
+        if sub in ("apply", "delete") and n >= 3:
+            from hopit.loaders import load_path_entries
+            word = words[-1]
+            paths = load_path_entries(word)
+            return [(p, "📄 manifest" if p.endswith((".yaml", ".yml", ".json")) else ("📁 folder" if os.path.isdir(p) else "📄 file")) for p in paths]
+
+        # After "get" → resource types
+        if sub == "get" and n == 3:
+            return list(KUBECTL_RESOURCE_TYPES)
+
+        # After "forward / port-forward" → pods
+        if sub in ("forward", "portforward") and n == 3:
+            return [(p, "📦 pod — then specify local:remote ports") for p in load_pods()]
+
+        # After "namespaces / create namespace / delete namespace" w/arg → namespace list
+        if sub in ("delete namespace", "remove namespace") and n == 4:
+            return [(ns, "📁 namespace") for ns in load_namespaces()]
+
+        return []
+
+    # ─── kubectl (raw) ───────────────────────────────────────────
+    if cmd == "kubectl":
+        if n == 2:
+            return list(KUBECTL_SUBCOMMANDS)
+
+        sub = words[1].lower()
+        ns_flag = False
+        ns_val = "default"
+        # detect -n / --namespace flags anywhere in the word list
+        for i, w in enumerate(words):
+            if w in ("-n", "--namespace") and i + 1 < len(words):
+                ns_val = words[i + 1]
+                ns_flag = True
+
+        if sub in ("get", "describe", "delete", "edit", "patch", "label", "annotate") and n == 3:
+            return list(KUBECTL_RESOURCE_TYPES)
+
+        # 4th word completions: after "kubectl get <resource>" or "kubectl describe pods"
+        if sub in ("get", "describe", "delete", "edit", "logs", "exec", "attach") and n >= 4:
+            resource = words[2].lower().rstrip("s")  # rough singular
+            if resource in ("pod", ""):
+                return [(p, "📦 pod") for p in load_pods(ns_val)]
+            elif resource in ("deployment", "deploy"):
+                return [(d, "🚀 deployment") for d in load_deployments(ns_val)]
+            elif resource in ("service", "svc"):
+                return [(s, "🌐 service") for s in load_services(ns_val)]
+            elif resource in ("node",):
+                return [(node, "🖥️  node") for node in load_nodes()]
+            elif resource in ("namespace", "ns"):
+                return [(ns, "📁 namespace") for ns in load_namespaces()]
+
+        if sub in ("-n", "--namespace") and n == 3:
+            return [(ns, "📁 namespace") for ns in load_namespaces()]
+
+        if sub in ("config",) and n == 3:
+            return [
+                ("get-contexts",  "List all kubectl contexts"),
+                ("use-context",   "Switch active kubectl context"),
+                ("current-context","Show current context"),
+                ("set-cluster",   "Set cluster configuration"),
+                ("set-credentials","Set user credentials"),
+                ("view",          "Display merged kubeconfig"),
+            ]
+        if sub == "config" and n == 4 and words[2].lower() in ("use-context",):
+            return [(ctx, "🌍 context") for ctx in load_contexts()]
+
+        if sub in ("apply", "create", "replace", "delete") and n >= 3:
+            # After -f flag, show file completions
+            if words[-2] in ("-f", "--filename", "-k", "--kustomize"):
+                from hopit.loaders import load_path_entries
+                word = words[-1]
+                paths = load_path_entries(word)
+                return [(p, "📄 manifest" if p.endswith((".yaml", ".yml", ".json")) else ("📁 folder" if os.path.isdir(p) else "📄 file")) for p in paths]
+            if n == 3:
+                return [("-f", "Specify file, directory, or URL"), ("--filename", "Specify file, directory, or URL"), ("-k", "Kustomize directory")]
+
+        if sub == "rollout" and n == 3:
+            return [
+                ("status",  "Show rollout status of a deployment"),
+                ("history", "View rollout revision history"),
+                ("undo",    "Roll back to a previous revision"),
+                ("pause",   "Pause a rollout"),
+                ("resume",  "Resume a paused rollout"),
+                ("restart", "Restart a rollout"),
+            ]
+        if sub == "rollout" and n == 4:
+            return [(f"deployment/{d}", "🚀 deployment") for d in load_deployments(ns_val)] + \
+                   [(f"statefulset/{d}", "📆 statefulset") for d in _run_silent_list("statefulsets", ns_val)]
+
+        if sub == "scale" and n == 3:
+            return [(f"deployment/{d}", "🚀 deployment") for d in load_deployments(ns_val)]
+
+        if sub == "port-forward" and n == 3:
+            return [(p, "📦 pod") for p in load_pods(ns_val)]
+
+        if sub == "top" and n == 3:
+            return [("pods", "Show pod CPU/Memory usage"), ("nodes", "Show node CPU/Memory usage")]
+
+        return []
+
+    return []
+
+
+def _run_silent_list(resource: str, namespace: str = "default") -> list[str]:
+    """Generic: kubectl get <resource> -n <ns> and return names."""
+    import subprocess, shutil
+    if not shutil.which("kubectl"):
+        return []
+    try:
+        r = subprocess.run(
+            ["kubectl", "get", resource, "-n", namespace, "--no-headers",
+             "-o", "custom-columns=NAME:.metadata.name"],
+            capture_output=True, text=True, timeout=4
+        )
+        return [l.strip() for l in r.stdout.splitlines() if l.strip()]
+    except Exception:
+        return []
+
+
 class LazyCompleter(Completer):
     def __init__(self, commands: dict):
         self.commands = commands
         aliases_to_hide = {
             "permissions", "drive", "compress", "ps", "where", "findcommand",
             "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-            "scrollfile", "findfile", "findtext", "whereami"
+            "scrollfile", "findfile", "findtext", "whereami", "kubernetes"
         }
         self.all_names = [k for k in commands if k not in aliases_to_hide] + list(BUILTIN_DESCRIPTIONS.keys())
 
@@ -522,6 +693,18 @@ class LazyCompleter(Completer):
                 return
             elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit"):
                 candidates = get_user_group_perm_completions(words, self.commands)
+                word_lower = word.lower()
+                matches = []
+                for cand, meta in candidates:
+                    if cand.lower().startswith(word_lower):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
+                return
+            elif resolved in ("k8s", "kubernetes", "kubectl"):
+                candidates = get_k8s_completions(words)
                 word_lower = word.lower()
                 matches = []
                 for cand, meta in candidates:
@@ -710,6 +893,59 @@ def print_help(commands: dict, manager: str | None):
             ("TXT", "Query DNS TXT records (text records): lookup TXT <host>"),
             ("NS", "Query DNS NS records (name servers): lookup NS <host>"),
         ],
+        "k8s": [
+            ("pods",            "List pods in current namespace"),
+            ("pods all",        "List pods across ALL namespaces"),
+            ("pod info",        "Describe a pod: k8s pod info <name>"),
+            ("logs",            "Show pod logs: k8s logs <pod>"),
+            ("follow",          "Follow live pod logs: k8s follow <pod>"),
+            ("exec",            "Bash into a pod: k8s exec <pod>"),
+            ("deployments",     "List all deployments"),
+            ("scale",           "Scale deployment: k8s scale <deploy> <replicas>"),
+            ("restart",         "Restart a deployment: k8s restart <deploy>"),
+            ("rollout status",  "Check rollout: k8s rollout status <deploy>"),
+            ("rollout undo",    "Rollback: k8s rollout undo <deploy>"),
+            ("services",        "List all services"),
+            ("nodes",           "List all cluster nodes"),
+            ("namespaces",      "List all namespaces"),
+            ("apply",           "Apply manifest: k8s apply <file.yaml>"),
+            ("delete",          "Delete resources: k8s delete <file.yaml>"),
+            ("top pods",        "Show pod CPU/Memory usage"),
+            ("events",          "Show recent cluster events"),
+            ("contexts",        "List all kubectl contexts"),
+            ("use context",     "Switch cluster context: k8s use context <name>"),
+            ("forward",         "Port-forward: k8s forward <pod> <local>:<remote>"),
+            ("cluster info",    "Show Kubernetes cluster API endpoint"),
+        ],
+        "kubectl": [
+            ("get pods",                  "List pods: kubectl get pods [-n namespace]"),
+            ("get deployments",           "List deployments"),
+            ("get services",              "List services"),
+            ("get nodes",                 "List cluster nodes"),
+            ("get namespaces",            "List namespaces"),
+            ("describe pod <name>",       "Detailed pod info"),
+            ("describe deployment <name>","Detailed deployment info"),
+            ("logs <pod>",                "Show pod logs"),
+            ("logs -f <pod>",             "Follow pod logs live"),
+            ("exec -it <pod> -- bash",    "Open shell in pod"),
+            ("apply -f <file.yaml>",      "Apply a manifest file"),
+            ("delete -f <file.yaml>",     "Delete resources from manifest"),
+            ("scale deployment <name> --replicas=N", "Scale a deployment"),
+            ("rollout status deployment/<name>",     "Check rollout status"),
+            ("rollout undo deployment/<name>",       "Roll back deployment"),
+            ("rollout restart deployment/<name>",    "Restart deployment"),
+            ("port-forward pod/<pod> 8080:8080",     "Port-forward to pod"),
+            ("config get-contexts",                  "List kubectl contexts"),
+            ("config use-context <name>",            "Switch kubectl context"),
+            ("top pods",                             "Show resource usage of pods"),
+            ("top nodes",                            "Show resource usage of nodes"),
+            ("get events --sort-by=.lastTimestamp",  "Show sorted cluster events"),
+            ("drain <node> --ignore-daemonsets",     "Drain a node safely"),
+            ("cordon <node>",                        "Mark node as unschedulable"),
+            ("uncordon <node>",                      "Mark node as schedulable"),
+            ("api-resources",                        "List all available API resource types"),
+            ("explain <resource>",                   "Get API documentation for a resource"),
+        ],
         "firewall": [
             ("status", "Show active rules, open ports, and backends"),
             ("allow", "Allow port traffic: firewall allow <port> [proto] [iface]"),
@@ -777,6 +1013,9 @@ def print_help(commands: dict, manager: str | None):
             "chmod", "chown", "chgrp", "useradd", "userdel", "usermod", "passwd",
             "groupadd", "groupdel"
         ],
+        "⎈️ Kubernetes & Containers": [
+            "k8s", "kubectl", "containers",
+        ],
         "🛠️ Version Control (Git)": [
             "git", "gitsave"
         ]
@@ -795,7 +1034,7 @@ def print_help(commands: dict, manager: str | None):
     aliases_to_hide = {
         "permissions", "drive", "compress", "ps", "where", "findcommand",
         "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-        "scrollfile", "findfile", "findtext", "whereami"
+        "scrollfile", "findfile", "findtext", "whereami", "kubernetes"
     }
 
     misc = []

@@ -207,7 +207,7 @@ def show_command_help(cmd_name: str, commands: dict):
         desc = cmd.desc
         sudo_req = cmd.needs_sudo
         
-        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup", "enter", "exit"):
+        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup", "enter", "exit", "k8s", "kubernetes", "kubectl"):
             show_context_help([cmd_name], commands)
             return
 
@@ -847,6 +847,164 @@ def show_context_help(words: list[str], commands: dict):
             console.print(Panel(table, title=title, border_style="cyan", expand=False))
         elif subcmd == "venv":
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # ─── Kubernetes (k8s / kubernetes) context help ─────────────────────
+    if resolved in ("k8s", "kubernetes"):
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            # ─ Pods
+            table.add_row("[bold magenta]# Pods[/bold magenta]", "")
+            table.add_row("[green]pods[/green]",             "List pods in the current namespace")
+            table.add_row("[green]pods all[/green]",         "List pods across ALL namespaces")
+            table.add_row("[green]pod info <name>[/green]",  "Detailed pod description")
+            table.add_row("[green]logs <pod>[/green]",       "Show pod logs (last 100 lines)")
+            table.add_row("[green]follow <pod>[/green]",     "Follow (tail -f) live pod logs")
+            table.add_row("[green]exec <pod>[/green]",       "Open /bin/bash shell inside pod")
+            table.add_row("[green]sh <pod>[/green]",         "Open /bin/sh shell inside pod")
+            # ─ Deployments
+            table.add_row("[bold magenta]# Deployments[/bold magenta]", "")
+            table.add_row("[green]deployments[/green]",                       "List all deployments")
+            table.add_row("[green]deployment info <name>[/green]",            "Describe a deployment")
+            table.add_row("[green]scale <deploy> <N>[/green]",                "Scale deployment to N replicas")
+            table.add_row("[green]restart <deploy>[/green]",                  "Rolling restart of a deployment")
+            table.add_row("[green]rollout status <deploy>[/green]",            "Check rollout progress")
+            table.add_row("[green]rollout history <deploy>[/green]",           "View rollout revision history")
+            table.add_row("[green]rollout undo <deploy>[/green]",              "Roll back to previous revision")
+            # ─ Services
+            table.add_row("[bold magenta]# Services[/bold magenta]", "")
+            table.add_row("[green]services[/green]",             "List all services")
+            table.add_row("[green]service info <name>[/green]",   "Describe a service")
+            # ─ Nodes
+            table.add_row("[bold magenta]# Nodes[/bold magenta]", "")
+            table.add_row("[green]nodes[/green]",               "List cluster nodes")
+            table.add_row("[green]node info <name>[/green]",     "Describe a specific node")
+            table.add_row("[green]drain <node>[/green]",         "Safely drain a node for maintenance")
+            table.add_row("[green]cordon <node>[/green]",        "Mark node as unschedulable")
+            table.add_row("[green]uncordon <node>[/green]",      "Mark node as schedulable")
+            # ─ Namespaces
+            table.add_row("[bold magenta]# Namespaces[/bold magenta]", "")
+            table.add_row("[green]namespaces[/green]",                    "List all namespaces")
+            table.add_row("[green]create namespace <name>[/green]",       "Create a new namespace")
+            table.add_row("[green]delete namespace <name>[/green]",       "Delete a namespace")
+            # ─ Apply / Delete
+            table.add_row("[bold magenta]# Manifests[/bold magenta]", "")
+            table.add_row("[green]apply <file.yaml>[/green]",   "Apply a Kubernetes manifest")
+            table.add_row("[green]delete <file.yaml>[/green]",  "Delete resources from a manifest")
+            table.add_row("[green]delete pod <name>[/green]",   "Force-delete a specific pod")
+            # ─ Monitoring
+            table.add_row("[bold magenta]# Monitoring[/bold magenta]", "")
+            table.add_row("[green]top pods[/green]",     "Show pod CPU/Memory usage")
+            table.add_row("[green]top nodes[/green]",    "Show node CPU/Memory usage")
+            table.add_row("[green]events[/green]",       "Show recent cluster events")
+            table.add_row("[green]cluster info[/green]", "Display cluster API endpoint")
+            # ─ Context
+            table.add_row("[bold magenta]# Context / Config[/bold magenta]", "")
+            table.add_row("[green]contexts[/green]",                  "List all kubectl contexts")
+            table.add_row("[green]use context <name>[/green]",         "Switch active cluster context")
+            table.add_row("[green]current context[/green]",            "Show current active context")
+            # ─ Port Forward
+            table.add_row("[bold magenta]# Port Forwarding[/bold magenta]", "")
+            table.add_row("[green]forward <pod> <local>:<remote>[/green]", "Forward local port to pod port")
+            console.print(Panel(
+                table,
+                title=f"[bold green]⎈ k8s — Simple-English Kubernetes Commands[/bold green]",
+                subtitle="[dim]Also accepts: kubernetes <verb>  |  Use kubectl for raw commands[/dim]",
+                border_style="cyan", expand=False
+            ))
+            return
+        # Provide next-step hints for each specific subcommand
+        pod_verbs = ("logs", "follow", "tail", "exec", "sh")
+        deploy_verbs = ("restart", "scale")
+        node_verbs = ("drain", "cordon", "uncordon")
+        if subcmd in pod_verbs:
+            console.print(Panel(f"[yellow]<pod>[/yellow]  Specify the pod name to {subcmd}", title=title, border_style="cyan", expand=False))
+        elif subcmd in deploy_verbs:
+            console.print(Panel(f"[yellow]<deployment>[/yellow]  Specify the deployment name to {subcmd}", title=title, border_style="cyan", expand=False))
+        elif subcmd in node_verbs:
+            console.print(Panel(f"[yellow]<node>[/yellow]  Specify the node name to {subcmd}", title=title, border_style="cyan", expand=False))
+        elif subcmd in ("apply", "delete"):
+            console.print(Panel("[yellow]<file.yaml>[/yellow]  Specify the manifest file path or URL", title=title, border_style="cyan", expand=False))
+        elif subcmd in ("scale",):
+            console.print(Panel("[yellow]<deployment> <N>[/yellow]  Specify deployment name and desired replica count", title=title, border_style="cyan", expand=False))
+        elif subcmd in ("forward", "portforward"):
+            console.print(Panel("[yellow]<pod> <local>:<remote>[/yellow]  Specify pod name and port mapping (e.g. 8080:8080)", title=title, border_style="cyan", expand=False))
+        elif subcmd == "get":
+            console.print(Panel("[yellow]<resource>[/yellow]  Specify resource type (pods, deployments, services, nodes, ...)", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        return
+
+    # ─── Raw kubectl context help ───────────────────────────────
+    if resolved == "kubectl":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[bold magenta]# Resource Queries[/bold magenta]", "")
+            table.add_row("[green]get <resource>[/green]",                      "List resources (pods, deployments, services, nodes ...)")
+            table.add_row("[green]get <resource> -n <namespace>[/green]",        "List resources in a specific namespace")
+            table.add_row("[green]get <resource> --all-namespaces[/green]",      "List resources across all namespaces")
+            table.add_row("[green]describe <resource> <name>[/green]",           "Detailed resource description")
+            table.add_row("[bold magenta]# Pod Management[/bold magenta]", "")
+            table.add_row("[green]logs <pod>[/green]",                           "Show pod logs")
+            table.add_row("[green]logs -f <pod>[/green]",                        "Follow (tail) pod logs live")
+            table.add_row("[green]logs <pod> -c <container>[/green]",            "Logs from a specific container in a pod")
+            table.add_row("[green]exec -it <pod> -- bash[/green]",               "Open interactive shell inside a pod")
+            table.add_row("[green]delete pod <name>[/green]",                    "Force delete a pod")
+            table.add_row("[bold magenta]# Deployments[/bold magenta]", "")
+            table.add_row("[green]scale deployment <name> --replicas=N[/green]",  "Scale a deployment")
+            table.add_row("[green]rollout status deployment/<name>[/green]",       "Check rollout progress")
+            table.add_row("[green]rollout undo deployment/<name>[/green]",         "Rollback to previous revision")
+            table.add_row("[green]rollout restart deployment/<name>[/green]",      "Rolling restart of all pods")
+            table.add_row("[bold magenta]# Apply / Delete[/bold magenta]", "")
+            table.add_row("[green]apply -f <file.yaml>[/green]",                  "Apply a manifest (create or update)")
+            table.add_row("[green]delete -f <file.yaml>[/green]",                 "Delete resources from manifest")
+            table.add_row("[green]create namespace <name>[/green]",               "Create a new namespace")
+            table.add_row("[bold magenta]# Port & Monitoring[/bold magenta]", "")
+            table.add_row("[green]port-forward pod/<pod> 8080:8080[/green]",       "Forward local port to pod")
+            table.add_row("[green]top pods[/green]",                               "Show pod CPU/Memory (needs metrics-server)")
+            table.add_row("[green]top nodes[/green]",                              "Show node CPU/Memory")
+            table.add_row("[green]get events --sort-by=.lastTimestamp[/green]",    "Show cluster events by time")
+            table.add_row("[bold magenta]# Context & Config[/bold magenta]", "")
+            table.add_row("[green]config get-contexts[/green]",                    "List all kubectl contexts")
+            table.add_row("[green]config use-context <name>[/green]",              "Switch to a context")
+            table.add_row("[green]config current-context[/green]",                 "Show current context")
+            table.add_row("[bold magenta]# Nodes[/bold magenta]", "")
+            table.add_row("[green]drain <node> --ignore-daemonsets[/green]",       "Drain node for maintenance")
+            table.add_row("[green]cordon <node>[/green]",                          "Mark node as unschedulable")
+            table.add_row("[green]uncordon <node>[/green]",                        "Mark node as schedulable")
+            table.add_row("[bold magenta]# Discovery[/bold magenta]", "")
+            table.add_row("[green]api-resources[/green]",                          "List all supported API resource types")
+            table.add_row("[green]explain <resource>[/green]",                     "Get field documentation for a resource")
+            console.print(Panel(
+                table,
+                title="[bold green]⎈ kubectl — Raw Kubernetes CLI Commands[/bold green]",
+                subtitle="[dim]Tip: Use 'k8s' for simple-English alternatives[/dim]",
+                border_style="cyan", expand=False
+            ))
+            return
+        # Hint for next arg
+        if subcmd in ("get", "describe", "delete", "edit"):
+            console.print(Panel("[yellow]<resource>[/yellow]  Specify resource type: pods, deployments, services, nodes, namespaces ...", title=title, border_style="cyan", expand=False))
+        elif subcmd == "logs":
+            console.print(Panel("[yellow]<pod_name>[/yellow]  Specify the pod name (add '-f' for live follow, '-c <container>' for specific container)", title=title, border_style="cyan", expand=False))
+        elif subcmd == "exec":
+            console.print(Panel("[yellow]-it <pod> -- <cmd>[/yellow]  e.g. kubectl exec -it mypod -- bash", title=title, border_style="cyan", expand=False))
+        elif subcmd in ("apply", "create", "replace"):
+            console.print(Panel("[yellow]-f <file.yaml>[/yellow]  Specify the manifest file or directory path", title=title, border_style="cyan", expand=False))
+        elif subcmd == "scale":
+            console.print(Panel("[yellow]deployment/<name> --replicas=N[/yellow]  Specify deployment name and desired replica count", title=title, border_style="cyan", expand=False))
+        elif subcmd == "rollout":
+            console.print(Panel("[yellow]status|history|undo|restart deployment/<name>[/yellow]  Specify rollout action and deployment name", title=title, border_style="cyan", expand=False))
+        elif subcmd == "port-forward":
+            console.print(Panel("[yellow]pod/<pod_name> <local>:<remote>[/yellow]  Specify pod and port mapping (e.g. 8080:8080)", title=title, border_style="cyan", expand=False))
+        elif subcmd == "config":
+            console.print(Panel("[yellow]get-contexts | use-context <name> | current-context | view[/yellow]", title=title, border_style="cyan", expand=False))
+        elif subcmd == "top":
+            console.print(Panel("[yellow]pods | nodes[/yellow]  Specify the resource type to show metrics for", title=title, border_style="cyan", expand=False))
+        elif subcmd in ("drain", "cordon", "uncordon"):
+            console.print(Panel("[yellow]<node_name>[/yellow]  Specify the node to perform the operation on", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel("Specify sub-arguments or options for the kubectl subcommand.", title=title, border_style="cyan", expand=False))
         return
 
     show_command_help(resolved, commands)

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
 from hopit.config import IS_WINDOWS, IS_MACOS
+from hopit.kubernetes import k8s_cmd, load_pods, load_namespaces, load_deployments, load_services, load_nodes, load_contexts, kubectl_available
 
 # Wrap shlex.split to support Windows paths by default
 _orig_split = shlex.split
@@ -1224,6 +1225,30 @@ def build_commands(manager: str | None, names: dict) -> dict:
             mode="capture",
             arg_completions=names["path"],
             arg_completion_kind="path",
+        ),
+        # ── Kubernetes ──────────────────────────────────────────────────────
+        "k8s": Command(
+            run=k8s_cmd,
+            desc="Kubernetes: simple-English or raw kubectl — k8s [pods|logs|deploy|scale|apply|...]",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=lambda: [t for t, _ in __import__('hopit.kubernetes', fromlist=['K8S_TOP_COMPLETIONS']).K8S_TOP_COMPLETIONS],
+            arg_completion_kind="k8s_subcommand",
+        ),
+        "kubernetes": Command(
+            run=k8s_cmd,
+            desc="Kubernetes manager (alias for k8s): kubernetes [pods|deploy|logs|...]",
+            needs_arg=False,
+            mode="stream",
+            arg_completion_kind="k8s_subcommand",
+        ),
+        "kubectl": Command(
+            run=lambda arg: ["kubectl"] + (shlex.split(arg) if arg else ["help"]),
+            desc="Raw kubectl pass-through: kubectl <subcommand> [args...]",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=lambda: [t for t, _ in __import__('hopit.kubernetes', fromlist=['KUBECTL_SUBCOMMANDS']).KUBECTL_SUBCOMMANDS],
+            arg_completion_kind="kubectl_subcommand",
         ),
     }
 
