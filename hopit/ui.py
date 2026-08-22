@@ -593,6 +593,67 @@ def render_result(
 
 
 def print_help(commands: dict, manager: str | None):
+    # Subcommands mapping for nested/indented display
+    SUBCOMMANDS = {
+        "git": [
+            ("log", "Show commit history with interactive scrolling"),
+            ("status", "Show working tree status"),
+            ("diff", "Show changes between commits/working tree"),
+            ("branch", "List, create, or delete branches"),
+            ("add", "Stage files for commit: git add <files>"),
+            ("commit", "Record staged changes: git commit <msg>"),
+            ("push", "Update remote refs"),
+            ("pull", "Fetch and integrate with local branch"),
+        ],
+        "create": [
+            ("folder", "Create a folder (mkdir -p): create folder <path>"),
+            ("file", "Create an empty file: create file <path>"),
+        ],
+        "show": [
+            ("file", "Show content of a file: show file <path>"),
+            ("start", "Show first N lines of a file: show start [-n lines] <path>"),
+            ("end", "Show last N lines of a file: show end [-n lines] <path>"),
+            ("tree", "Show directory structure: show tree [path]"),
+            ("env", "View environment variables: show env [var]"),
+            ("history", "View shell command history: show history"),
+        ],
+        "firewall": [
+            ("status", "Show active rules, open ports, and backends"),
+            ("allow", "Allow port traffic: firewall allow <port> [proto] [iface]"),
+            ("block", "Block port traffic: firewall block <port> [proto] [iface]"),
+            ("interactive", "Prompt-driven interactive firewall wizard"),
+        ],
+        "disk": [
+            ("list", "List all storage drives/partitions"),
+            ("usage", "Show directory storage usage: disk usage <path>"),
+        ],
+        "drive": [
+            ("list", "List all storage drives/partitions"),
+            ("usage", "Show directory storage usage: drive usage <path>"),
+        ],
+        "user": [
+            ("add", "Add a new system user: user add <username>"),
+            ("remove", "Delete a system user: user remove <username>"),
+            ("list", "List system users: user list"),
+            ("passwd", "Change user password: user passwd <username>"),
+        ],
+        "group": [
+            ("add", "Add a new system group: group add <group>"),
+            ("remove", "Delete a system group: group remove <group>"),
+            ("list", "List system groups: group list"),
+        ],
+        "permission": [
+            ("show", "Show permissions of a path: permission show <path>"),
+            ("grant", "Grant permissions: permission grant <owner|group> <rights> <path>"),
+            ("revoke", "Revoke permissions: permission revoke <owner|group> <rights> <path>"),
+        ],
+        "permissions": [
+            ("show", "Show permissions of a path: permissions show <path>"),
+            ("grant", "Grant permissions: permissions grant <owner|group> <rights> <path>"),
+            ("revoke", "Revoke permissions: permissions revoke <owner|group> <rights> <path>"),
+        ],
+    }
+
     # Categorized commands mapping
     categories = {
         "📂 File & Directory Management": [
@@ -651,8 +712,8 @@ def print_help(commands: dict, manager: str | None):
             continue
 
         table = Table(title=cat_title, show_lines=False, title_justify="left", box=None, padding=(0, 2))
-        table.add_column("Command", style="bold cyan", width=18)
-        table.add_column("Description", width=55)
+        table.add_column("Command", style="bold cyan", width=24)
+        table.add_column("Description", width=50)
         table.add_column("Platform Support", style="bold green", justify="center", width=18)
 
         for name, cmd in cat_cmds:
@@ -662,6 +723,12 @@ def print_help(commands: dict, manager: str | None):
             # Universal compat since we support/translate them all
             compat = "L | M | W"
             table.add_row(name, desc, compat)
+            
+            # Render subcommands if available
+            clean_name = name.split()[0].strip()
+            if clean_name in SUBCOMMANDS:
+                for sub_name, sub_desc in SUBCOMMANDS[clean_name]:
+                    table.add_row(f"  ↳ [cyan]{sub_name}[/cyan]", f"[dim]{sub_desc}[/dim]", f"[dim]{compat}[/dim]")
             
         console.print(table)
         console.print()
@@ -676,8 +743,8 @@ def print_help(commands: dict, manager: str | None):
         
     if builtin_cmds:
         table = Table(title="🛠️ CLI Built-ins", show_lines=False, title_justify="left", box=None, padding=(0, 2))
-        table.add_column("Command", style="bold cyan", width=18)
-        table.add_column("Description", width=55)
+        table.add_column("Command", style="bold cyan", width=24)
+        table.add_column("Description", width=50)
         table.add_column("Platform Support", style="bold green", justify="center", width=18)
         
         for name, desc in builtin_cmds:
