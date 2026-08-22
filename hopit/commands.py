@@ -641,7 +641,7 @@ def build_commands(manager: str | None, names: dict) -> dict:
         ),
         "netconfig": Command(
             run=lambda adapter: [],  # handled specially in main loop
-            desc="Interactively configure DHCP/Static IP for an adapter",
+            desc="Interactively configure DHCP/Static IP for an adapter, reset, or release/renew DHCP",
             needs_arg=True,
             arg_completions=names["adapter"],
             arg_completion_kind="adapter",

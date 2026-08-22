@@ -463,6 +463,25 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 "NS": "Query DNS NS records (name servers)",
             }
             return [(k, v) for k, v in lookup_subs.items()]
+
+    elif cmd == "netconfig":
+        if len(words) == 2:
+            from hopit.loaders import load_adapters
+            adapters = load_adapters()
+            ans = [(adapter, "🌐 adapter") for adapter in adapters]
+            ans.append(("dhcp", "Manage DHCP lease"))
+            ans.append(("reset", "Reset adapter manual changes"))
+            return ans
+        elif len(words) == 3 and words[1].lower() == "reset":
+            from hopit.loaders import load_adapters
+            adapters = load_adapters()
+            return [(adapter, "🌐 adapter") for adapter in adapters]
+        elif len(words) == 3 and words[1].lower() == "dhcp":
+            return [("release", "Release DHCP lease"), ("renew", "Renew DHCP lease")]
+        elif len(words) == 4 and words[1].lower() == "dhcp" and words[2].lower() in ("release", "renew"):
+            from hopit.loaders import load_adapters
+            adapters = load_adapters()
+            return [(adapter, "🌐 adapter") for adapter in adapters]
             
     return []
 
@@ -732,7 +751,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit"):
+            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "netconfig"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []
@@ -933,6 +952,11 @@ def print_help(commands: dict, manager: str | None):
             ("MX", "Query DNS MX records (mail exchangers): lookup MX <host>"),
             ("TXT", "Query DNS TXT records (text records): lookup TXT <host>"),
             ("NS", "Query DNS NS records (name servers): lookup NS <host>"),
+        ],
+        "netconfig": [
+            ("reset", "Clear manual IP/DNS changes and restore DHCP: netconfig reset <adapter>"),
+            ("dhcp release", "Release DHCP lease for an adapter: netconfig dhcp release <adapter>"),
+            ("dhcp renew", "Renew DHCP lease for an adapter: netconfig dhcp renew <adapter>"),
         ],
         "k8s": [
             ("pods",            "List pods in current namespace"),

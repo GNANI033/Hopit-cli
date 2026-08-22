@@ -257,7 +257,7 @@ def show_command_help(cmd_name: str, commands: dict):
         elif cmd_name in ("install", "uninstall"):
             usage = f"{cmd_name} <package_name>"
         elif cmd_name == "netconfig":
-            usage = "netconfig <adapter_name>"
+            usage = "netconfig <adapter_name> | reset <adapter> | dhcp release/renew <adapter>"
         elif cmd_name == "port":
             usage = "port <port_number | program_name>"
         else:
@@ -316,6 +316,10 @@ def show_context_help(words: list[str], commands: dict):
             subcmd = matched_sub
     elif resolved == "find":
         matched_sub, _ = resolve_subcommand(subcmd, ["file", "text"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "netconfig":
+        matched_sub, _ = resolve_subcommand(subcmd, ["dhcp", "reset"])
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "enter":
@@ -747,7 +751,22 @@ def show_context_help(words: list[str], commands: dict):
 
     if resolved == "netconfig":
         if not subcmd:
-            console.print(Panel("[yellow]<adapter>[/yellow]  Specify the network interface/adapter to configure", title=title, border_style="cyan", expand=False))
+            console.print(Panel("[yellow]<adapter>[/yellow]  Specify the network interface/adapter to configure, 'dhcp' to release/renew, or 'reset' to clear manual changes", title=title, border_style="cyan", expand=False))
+        elif subcmd == "reset":
+            if not rest:
+                console.print(Panel("[yellow]<adapter>[/yellow]  Specify the adapter to reset to default DHCP", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "dhcp":
+            if not rest:
+                table = Table(show_header=False, box=None, padding=(0, 2))
+                table.add_row("[green]release <adapter>[/green]", "Release DHCP lease for the adapter")
+                table.add_row("[green]renew <adapter>[/green]", "Renew DHCP lease for the adapter")
+                console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            elif len(rest) == 1 and rest[0].lower() in ("release", "renew"):
+                console.print(Panel("[yellow]<adapter>[/yellow]  Specify the adapter for DHCP operation", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         else:
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         return
@@ -1837,8 +1856,101 @@ def execute_line(
 
     if name == "netconfig":
         if not rest:
-            console.print("[yellow]Please specify an adapter, e.g., 'netconfig eth0'[/yellow]")
+            console.print("[yellow]Please specify an adapter or subcommand, e.g., 'netconfig eth0', 'netconfig dhcp release eth0' or 'netconfig reset eth0'[/yellow]")
             return True
+
+        if len(rest) >= 2 and rest[0].lower() == "reset":
+            adapter = rest[1]
+            if IS_WINDOWS:
+                console.print(f"[cyan]Resetting adapter {adapter} to DHCP...[/cyan]")
+                subprocess.run(["netsh", "interface", "ip", "set", "address", f"name={adapter}", "source=dhcp"])
+                subprocess.run(["netsh", "interface", "ip", "set", "dns", f"name={adapter}", "source=dhcp"])
+                console.print("[bold green]Reset complete.[/bold green]")
+                return True
+                
+            if IS_MACOS:
+                console.print(f"[cyan]Resetting adapter {adapter} to DHCP...[/cyan]")
+                subprocess.run(with_privilege(["networksetup", "-setdhcp", adapter], True))
+                subprocess.run(with_privilege(["networksetup", "-setdnsservers", adapter, "Empty"], True))
+                console.print("[bold green]Reset complete.[/bold green]")
+                return True
+                
+            # Linux
+            if not os.path.exists(f"/sys/class/net/{adapter}"):
+                console.print(f"[red]Adapter '{adapter}' not found on this system.[/red]")
+                return True
+                
+            if shutil.which("nmcli"):
+                conn_name = None
+                try:
+                    out = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE", "con", "show"], capture_output=True, text=True)
+                    for line in out.stdout.splitlines():
+                        if ":" in line:
+                            cname, dev = line.split(":", 1)
+                            if dev == adapter:
+                                conn_name = cname
+                                break
+                except Exception:
+                    pass
+                    
+                if not conn_name:
+                    conn_name = adapter
+                    
+                console.print(f"[cyan]Resetting adapter {adapter} to DHCP and clearing manual settings...[/cyan]")
+                try:
+                    subprocess.run(with_privilege(["nmcli", "con", "mod", conn_name, "ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", "", "ipv4.dns", ""], True), stderr=subprocess.DEVNULL)
+                    subprocess.run(with_privilege(["nmcli", "con", "up", conn_name], True), stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+                console.print("[bold green]Reset complete.[/bold green]")
+            else:
+                console.print("[red]'nmcli' is required on Linux to perform a full adapter reset.[/red]")
+            return True
+
+        if len(rest) >= 2 and rest[0].lower() == "dhcp" and rest[1].lower() in ("release", "renew"):
+            action = rest[1].lower()
+            adapter = rest[2] if len(rest) > 2 else None
+            if not adapter:
+                console.print(f"[yellow]Please specify an adapter for dhcp {action}, e.g., 'netconfig dhcp {action} eth0'[/yellow]")
+                return True
+                
+            if IS_WINDOWS:
+                console.print(f"[cyan]Running IPConfig /{action} for {adapter}...[/cyan]")
+                subprocess.run(["ipconfig", f"/{action}", adapter])
+                return True
+            
+            if IS_MACOS:
+                if action == "renew":
+                    console.print(f"[cyan]Renewing DHCP lease for {adapter}...[/cyan]")
+                    subprocess.run(with_privilege(["ipconfig", "set", adapter, "DHCP"], True))
+                else:
+                    console.print(f"[yellow]DHCP release is not directly supported via CLI on macOS without bringing down the interface. Use 'netconfig {adapter}' instead.[/yellow]")
+                return True
+                
+            # Linux
+            if not os.path.exists(f"/sys/class/net/{adapter}"):
+                console.print(f"[red]Adapter '{adapter}' not found on this system.[/red]")
+                return True
+                
+            if shutil.which("dhclient"):
+                if action == "release":
+                    console.print(f"[cyan]Releasing DHCP lease for {adapter}...[/cyan]")
+                    subprocess.run(with_privilege(["dhclient", "-r", adapter], True))
+                else:
+                    console.print(f"[cyan]Renewing DHCP lease for {adapter}...[/cyan]")
+                    subprocess.run(with_privilege(["dhclient", adapter], True))
+            else:
+                if shutil.which("nmcli"):
+                    if action == "release":
+                        console.print(f"[cyan]Releasing DHCP lease (bringing down) for {adapter}...[/cyan]")
+                        subprocess.run(with_privilege(["nmcli", "dev", "disconnect", adapter], True))
+                    else:
+                        console.print(f"[cyan]Renewing DHCP lease (bringing up) for {adapter}...[/cyan]")
+                        subprocess.run(with_privilege(["nmcli", "dev", "connect", adapter], True))
+                else:
+                    console.print("[red]Neither 'dhclient' nor 'nmcli' found to manage DHCP leases.[/red]")
+            return True
+
         if IS_WINDOWS:
             configure_windows_network(rest[0], create_prompt_style(get_active_theme()))
             return True
