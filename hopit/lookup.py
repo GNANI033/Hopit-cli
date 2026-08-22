@@ -5,11 +5,108 @@ import shutil
 import time
 import platform
 import urllib.request
-from rich.console import Console, Group
+from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.live import Live
 from rich.rule import Rule
+
+def query_dns_record(host, record_type):
+    record_type = record_type.upper()
+    results = []
+    
+    # 1. Try using dig if available
+    if shutil.which("dig"):
+        try:
+            out = subprocess.run(["dig", "+short", record_type, host], capture_output=True, text=True, timeout=3)
+            for line in out.stdout.splitlines():
+                line = line.strip()
+                if line:
+                    results.append(line.strip('"'))
+            if results:
+                return results
+        except Exception:
+            pass
+
+    # 2. Try using nslookup if available
+    if shutil.which("nslookup"):
+        try:
+            out = subprocess.run(["nslookup", f"-type={record_type}", host], capture_output=True, text=True, timeout=3)
+            lines = out.stdout.splitlines()
+            answer_section = False
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                # Skip nslookup server header
+                if "Non-authoritative answer" in line or answer_section:
+                    answer_section = True
+                if not answer_section and (line.startswith("Server:") or line.startswith("Address:")):
+                    continue
+                
+                if record_type == "MX":
+                    if "mail exchanger" in line or "MX preference" in line:
+                        val = line.split("=", 1)[1].strip() if "=" in line else line.strip()
+                        results.append(val.strip('"'))
+                elif record_type == "TXT":
+                    if "text =" in line:
+                        val = line.split("text =", 1)[1].strip()
+                        results.append(val.strip('"'))
+                    elif "text" in line and "=" in line:
+                        val = line.split("=", 1)[1].strip()
+                        results.append(val.strip('"'))
+                elif record_type == "CNAME":
+                    if "canonical name" in line:
+                        val = line.split("canonical name =", 1)[1].strip()
+                        results.append(val)
+                    elif "cname" in line and "=" in line:
+                        val = line.split("=", 1)[1].strip()
+                        results.append(val)
+                elif record_type == "NS":
+                    if "nameserver =" in line:
+                        val = line.split("nameserver =", 1)[1].strip()
+                        results.append(val)
+                    elif "nameserver" in line and "=" in line:
+                        val = line.split("=", 1)[1].strip()
+                        results.append(val)
+                elif record_type in ("A", "AAAA"):
+                    if line.startswith("Address:"):
+                        addr = line.split("Address:", 1)[1].strip()
+                        if addr and not addr.startswith("#"):
+                            results.append(addr)
+                    elif line.startswith("Addresses:"):
+                        addr = line.split("Addresses:", 1)[1].strip()
+                        if addr:
+                            results.append(addr)
+            if results:
+                # Remove duplicates while preserving order
+                seen = set()
+                return [x for x in results if not (x in seen or seen.add(x))]
+        except Exception:
+            pass
+
+    # 3. Fallback to python socket for basic records
+    if record_type == "A":
+        try:
+            ais = socket.getaddrinfo(host, None, socket.AF_INET)
+            return sorted(list(set(ai[4][0] for ai in ais)))
+        except Exception:
+            pass
+    elif record_type == "AAAA":
+        try:
+            ais = socket.getaddrinfo(host, None, socket.AF_INET6)
+            return sorted(list(set(ai[4][0] for ai in ais)))
+        except Exception:
+            pass
+    elif record_type == "CNAME":
+        try:
+            cname, _, _ = socket.gethostbyname_ex(host)
+            if cname and cname != host:
+                return [cname]
+        except Exception:
+            pass
+
+    return results
 
 def resolve_dns(target):
     info = {"ipv4": [], "ipv6": [], "ptr": None, "cname": None}
@@ -164,19 +261,79 @@ def check_http(target):
             
         return {"status": status_txt, "server": "N/A", "latency": "N/A"}
 
+def get_all_dns_records(target):
+    record_types = ["A", "AAAA", "CNAME", "MX", "TXT", "NS"]
+    records = {}
+    for rtype in record_types:
+        res = query_dns_record(target, rtype)
+        if res:
+            records[rtype] = res
+    return records
+
+def build_dns_records_table(dns_records, target):
+    table = Table(box=None, show_header=True, padding=(0, 2))
+    table.add_column("Record Type", style="bold cyan", width=15)
+    table.add_column("Value", style="green")
+    
+    found_any = False
+    for rtype in ["A", "AAAA", "CNAME", "MX", "TXT", "NS"]:
+        results = dns_records.get(rtype)
+        if results:
+            found_any = True
+            for idx, val in enumerate(results):
+                type_str = rtype if idx == 0 else ""
+                table.add_row(type_str, val)
+            table.add_row("", "")
+            
+    return table, found_any
+
 def main():
     if len(sys.argv) < 2:
-        print("Usage: lookup <host_or_ip>")
+        print("Usage: lookup [A|AAAA|CNAME|MX|TXT|NS|all] <host_or_ip>")
         sys.exit(1)
         
-    target = sys.argv[1]
+    subcmd = "DASHBOARD"
+    target = ""
+    
+    if len(sys.argv) >= 3:
+        first_arg = sys.argv[1].upper()
+        if first_arg in ("A", "AAAA", "CNAME", "MX", "TXT", "NS"):
+            subcmd = first_arg
+            target = sys.argv[2]
+        elif first_arg == "ALL":
+            subcmd = "ALL"
+            target = sys.argv[2]
+        else:
+            subcmd = "DASHBOARD"
+            target = sys.argv[1]
+    else:
+        target = sys.argv[1]
+        subcmd = "DASHBOARD"
+        
     # Prevent option injection and invalid characters
     if not target or target.startswith('-') or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:' for c in target):
         print(f"Error: Invalid target hostname or IP address '{target}'.")
         sys.exit(1)
 
-    console = Console()
+    from hopit.config import console, get_active_theme
+    theme = get_active_theme()
+    border_color = theme.get("border", "cyan")
     
+    if subcmd in ("A", "AAAA", "CNAME", "MX", "TXT", "NS"):
+        results = query_dns_record(target, subcmd)
+        if not results:
+            console.print(Panel(f"[red]No {subcmd} records found for '{target}' (or query failed).[/red]", title=f"[bold red]DNS Lookup: {subcmd} ({target})[/bold red]", border_style="red"))
+            sys.exit(1)
+            
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        table.add_column("Index", style="bold cyan")
+        table.add_column("Value")
+        for idx, val in enumerate(results, 1):
+            table.add_row(f"#{idx}", val)
+            
+        console.print(Panel(table, title=f"[bold green]DNS Lookup: {subcmd} records for {target}[/bold green]", border_style=border_color))
+        sys.exit(0)
+
     results = {}
     
     def generate_diagnostic_summary(res):
@@ -252,27 +409,6 @@ def main():
         # Header
         table.add_row(f"[bold green]🔍 Consolidating Diagnostic Lookup for: {target}[/bold green]\n")
         
-        # DNS Resolution
-        dns_status = "[yellow]Querying DNS...[/yellow]" if "dns" not in results else "[green]Done[/green]"
-        dns_table = Table.grid(padding=(0, 2))
-        dns_table.add_column("Key", style="bold cyan")
-        dns_table.add_column("Value")
-        
-        if "dns" in results:
-            dns_info = results["dns"]
-            if dns_info.get("ptr"):
-                dns_table.add_row("PTR (Reverse DNS)", dns_info["ptr"])
-            if dns_info.get("cname"):
-                dns_table.add_row("Canonical Name", dns_info["cname"])
-            if dns_info.get("ipv4"):
-                dns_table.add_row("IPv4 Addresses", "\n".join(dns_info["ipv4"]))
-            if dns_info.get("ipv6"):
-                dns_table.add_row("IPv6 Addresses", "\n".join(dns_info["ipv6"]))
-            if not dns_info.get("ptr") and not dns_info.get("ipv4") and not dns_info.get("ipv6"):
-                dns_table.add_row("Result", "Resolution Failed")
-        else:
-            dns_table.add_row("Status", dns_status)
-            
         # Ping latency test
         ping_status = "[yellow]Running Ping...[/yellow]" if "ping" not in results else "[green]Done[/green]"
         ping_table = Table.grid(padding=(0, 2))
@@ -301,7 +437,7 @@ def main():
             http_table.add_row("Latency", h["latency"])
         else:
             http_table.add_row("Status", http_status)
-
+ 
         # Traceroute
         trace_status = "[yellow]Tracing route...[/yellow]" if "trace" not in results else "[green]Done[/green]"
         trace_table = Table.grid(padding=(0, 2))
@@ -313,11 +449,7 @@ def main():
                 trace_table.add_row(f"#{idx+1}", hop)
         else:
             trace_table.add_row("Status", trace_status)
-
-        grids_table = Table.grid(padding=1)
-        grids_table.add_column("Col1")
-        grids_table.add_column("Col2")
-        
+ 
         summary_text = generate_diagnostic_summary(results)
         if summary_text:
             http_content = Group(
@@ -328,22 +460,76 @@ def main():
         else:
             http_content = http_table
         
-        grids_table.add_row(
-            Panel(dns_table, title="[bold green]DNS Resolution[/bold green]", border_style="cyan"),
-            Panel(ping_table, title="[bold green]Ping Latency Test[/bold green]", border_style="cyan")
-        )
-        
-        grids_table.add_row(
-            Panel(http_content, title="[bold green]HTTP Web Probe[/bold green]", border_style="cyan"),
-            Panel(trace_table, title="[bold green]Route Trace[/bold green]", border_style="cyan")
-        )
-        
-        table.add_row(grids_table)
-        return table
+        if subcmd == "ALL":
+            # DNS records on the left
+            if "dns_records" in results:
+                dns_records_table, found = build_dns_records_table(results["dns_records"], target)
+                if found:
+                    left_panel = Panel(dns_records_table, title=f"[bold green]DNS Lookup: ALL records for {target}[/bold green]", border_style=border_color)
+                else:
+                    left_panel = Panel(f"[red]No DNS records found for '{target}' (or query failed).[/red]", title=f"[bold red]DNS Lookup: ALL ({target})[/bold red]", border_style="red")
+            else:
+                left_panel = Panel("[yellow]Querying comprehensive DNS records...[/yellow]", title=f"[bold green]DNS Lookup: ALL records for {target}[/bold green]", border_style=border_color)
 
+            # Diagnostics stacked on the right (Ping + HTTP)
+            right_grid = Table.grid(padding=1)
+            right_grid.add_column("Col")
+            right_grid.add_row(Panel(ping_table, title="[bold green]Ping Latency Test[/bold green]", border_style=border_color))
+            right_grid.add_row(Panel(http_content, title="[bold green]HTTP Web Probe[/bold green]", border_style=border_color))
+
+            # Upper row containing DNS Lookup on left, Ping + HTTP on right
+            top_grid = Table.grid(padding=1)
+            top_grid.add_column("LeftCol")
+            top_grid.add_column("RightCol")
+            top_grid.add_row(left_panel, right_grid)
+            
+            # Add top grid and then the Route Trace panel full width below it
+            table.add_row(top_grid)
+            table.add_row(Panel(trace_table, title="[bold green]Route Trace[/bold green]", border_style=border_color))
+        else:
+            # DNS Resolution
+            dns_status = "[yellow]Querying DNS...[/yellow]" if "dns" not in results else "[green]Done[/green]"
+            dns_table = Table.grid(padding=(0, 2))
+            dns_table.add_column("Key", style="bold cyan")
+            dns_table.add_column("Value")
+            
+            if "dns" in results:
+                dns_info = results["dns"]
+                if dns_info.get("ptr"):
+                    dns_table.add_row("PTR (Reverse DNS)", dns_info["ptr"])
+                if dns_info.get("cname"):
+                    dns_table.add_row("Canonical Name", dns_info["cname"])
+                if dns_info.get("ipv4"):
+                    dns_table.add_row("IPv4 Addresses", "\n".join(dns_info["ipv4"]))
+                if dns_info.get("ipv6"):
+                    dns_table.add_row("IPv6 Addresses", "\n".join(dns_info["ipv6"]))
+                if not dns_info.get("ptr") and not dns_info.get("ipv4") and not dns_info.get("ipv6"):
+                    dns_table.add_row("Result", "Resolution Failed")
+            else:
+                dns_table.add_row("Status", dns_status)
+
+            grids_table = Table.grid(padding=1)
+            grids_table.add_column("Col1")
+            grids_table.add_column("Col2")
+            
+            grids_table.add_row(
+                Panel(dns_table, title="[bold green]DNS Resolution[/bold green]", border_style=border_color),
+                Panel(ping_table, title="[bold green]Ping Latency Test[/bold green]", border_style=border_color)
+            )
+            grids_table.add_row(
+                Panel(http_content, title="[bold green]HTTP Web Probe[/bold green]", border_style=border_color),
+                Panel(trace_table, title="[bold green]Route Trace[/bold green]", border_style=border_color)
+            )
+            table.add_row(grids_table)
+
+        return table
+ 
     with Live(generate_dashboard(), console=console, refresh_per_second=4) as live:
         # Step 1: DNS
-        results["dns"] = resolve_dns(target)
+        if subcmd == "ALL":
+            results["dns_records"] = get_all_dns_records(target)
+        else:
+            results["dns"] = resolve_dns(target)
         live.update(generate_dashboard())
         
         # Step 2: Ping
@@ -357,6 +543,6 @@ def main():
         # Step 4: Traceroute
         results["trace"] = run_traceroute(target)
         live.update(generate_dashboard())
-
+ 
 if __name__ == "__main__":
     main()

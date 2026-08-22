@@ -2,7 +2,6 @@ import sys
 import socket
 import subprocess
 import shutil
-from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
@@ -17,7 +16,9 @@ def main():
         print(f"Error: Invalid hostname or IP address '{host}'.")
         sys.exit(1)
 
-    console = Console()
+    from hopit.config import console, get_active_theme
+    theme = get_active_theme()
+    border_color = theme.get("border", "cyan")
     
     grid = Table.grid(padding=(0, 2))
     grid.add_column("Type", style="bold cyan")
@@ -94,7 +95,7 @@ def main():
     if txt_records:
         grid.add_row("TXT Records", "\n".join(txt_records[:5]))
 
-    console.print(Panel(grid, title=f"[bold green]DNS Query: {host}[/bold green]", border_style="cyan"))
+    console.print(Panel(grid, title=f"[bold green]DNS Query: {host}[/bold green]", border_style=border_color))
 
 if __name__ == "__main__":
     main()

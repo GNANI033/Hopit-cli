@@ -372,6 +372,12 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 "tree": "Show directory structure in a tree (tree)",
                 "env": "View or filter environment variables (env)",
                 "history": "Show the session command history (history)",
+                "arp": "View Address Resolution Protocol (ARP) table",
+                "mac": "Display MAC addresses of active network interfaces",
+                "gateway": "Display system default gateway IP address",
+                "ip": "Show IP addresses and network interfaces",
+                "route": "View the system network routing table",
+                "hostname": "View or change the system's host name",
             }
             return [(k, v) for k, v in show_subs.items()]
         elif len(words) >= 3:
@@ -381,7 +387,20 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
                 word = words[-1]
                 paths = load_path_entries(word)
                 return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
-                
+
+    elif cmd == "lookup":
+        if len(words) == 2:
+            lookup_subs = {
+                "all": "Consolidated diagnostics (DNS, Ping, HTTP, Traceroute)",
+                "A": "Query DNS A records (IPv4 addresses)",
+                "AAAA": "Query DNS AAAA records (IPv6 addresses)",
+                "CNAME": "Query DNS CNAME records (canonical names)",
+                "MX": "Query DNS MX records (mail exchangers)",
+                "TXT": "Query DNS TXT records (text records)",
+                "NS": "Query DNS NS records (name servers)",
+            }
+            return [(k, v) for k, v in lookup_subs.items()]
+            
     return []
 
 
@@ -479,7 +498,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show"):
+            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []
@@ -645,6 +664,21 @@ def print_help(commands: dict, manager: str | None):
             ("tree", "Show directory structure: show tree [path]"),
             ("env", "View environment variables: show env [var]"),
             ("history", "View shell command history: show history"),
+            ("arp", "View Address Resolution Protocol (ARP) table: show arp [args]"),
+            ("mac", "Display MAC addresses of active network interfaces: show mac"),
+            ("gateway", "Display system default gateway IP address: show gateway"),
+            ("ip", "Show IP addresses and network interfaces: show ip"),
+            ("route", "View the system network routing table: show route [args]"),
+            ("hostname", "View or change the system's host name: show hostname [new_name]"),
+        ],
+        "lookup": [
+            ("all", "Perform consolidated diagnostics: lookup all <host_or_ip>"),
+            ("A", "Query DNS A records (IPv4 addresses): lookup A <host>"),
+            ("AAAA", "Query DNS AAAA records (IPv6 addresses): lookup AAAA <host>"),
+            ("CNAME", "Query DNS CNAME records (canonical names): lookup CNAME <host>"),
+            ("MX", "Query DNS MX records (mail exchangers): lookup MX <host>"),
+            ("TXT", "Query DNS TXT records (text records): lookup TXT <host>"),
+            ("NS", "Query DNS NS records (name servers): lookup NS <host>"),
         ],
         "firewall": [
             ("status", "Show active rules, open ports, and backends"),
@@ -702,8 +736,7 @@ def print_help(commands: dict, manager: str | None):
             "shutdown", "cancel", "port"
         ],
         "🌐 Network & Web Diagnostics": [
-            "lookup", "dns", "ping", "traceroute", "nslookup", "connections", "gateway", "mac", "ip", "netconfig",
-            "netstat", "route", "arp", "hostname"
+            "lookup", "dns", "ping", "traceroute", "nslookup", "connections", "netconfig", "netstat"
         ],
         "🔒 Remote Access, Services & Security": [
             "ssh", "scp", "sftp", "download", "wget", "curl", "firewall", "user", "group", "permission",

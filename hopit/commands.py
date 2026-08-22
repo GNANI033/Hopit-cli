@@ -638,12 +638,6 @@ def build_commands(manager: str | None, names: dict) -> dict:
             desc="Add a shell alias interactively (auto-detects your shell)",
             needs_arg=False,
         ),
-        "ip": Command(
-            run=lambda _: ip_cmd(),
-            desc="Show IP addresses and network interfaces",
-            needs_arg=False,
-            mode="capture",
-        ),
         "netconfig": Command(
             run=lambda adapter: [],  # handled specially in main loop
             desc="Interactively configure DHCP/Static IP for an adapter",
@@ -778,31 +772,19 @@ def build_commands(manager: str | None, names: dict) -> dict:
             run=lambda arg: [sys.executable, "-m", "hopit.dns"] + (shlex.split(arg) if arg else []),
             desc="Perform DNS resolution lookup for a host: dns <host>",
             needs_arg=True,
-            mode="capture",
+            mode="stream",
         ),
         "lookup": Command(
             run=lambda arg: [sys.executable, "-m", "hopit.lookup"] + (shlex.split(arg) if arg else []),
             desc="Perform consolidated diagnostics (DNS, Ping, HTTP, Traceroute): lookup <host_or_ip>",
             needs_arg=True,
-            mode="capture",
+            mode="stream",
         ),
         "nslookup": Command(
             run=lambda arg: ["nslookup"] + shlex.split(arg) if arg else [],
             desc="Query Internet name servers: nslookup <host>",
             needs_arg=True,
             mode="stream",
-        ),
-        "route": Command(
-            run=lambda arg: (["route", "print"] + shlex.split(arg)) if IS_WINDOWS else ((["netstat", "-rn"] + shlex.split(arg)) if IS_MACOS else (["ip", "route"] + shlex.split(arg))),
-            desc="View or configure the system network routing table: route [args]",
-            needs_arg=False,
-            mode="capture",
-        ),
-        "arp": Command(
-            run=lambda arg: (["arp", "-a"] + shlex.split(arg)) if IS_WINDOWS else ((["arp", "-an"] + shlex.split(arg)) if IS_MACOS else (["ip", "neigh"] + shlex.split(arg))),
-            desc="View Address Resolution Protocol (ARP) table: arp [args]",
-            needs_arg=False,
-            mode="capture",
         ),
         "netstat": Command(
             run=lambda arg: ["netstat"] + shlex.split(arg) if arg else (["netstat", "-ano"] if IS_WINDOWS else ["netstat", "-an"]),
@@ -813,24 +795,6 @@ def build_commands(manager: str | None, names: dict) -> dict:
         "connections": Command(
             run=lambda _: [sys.executable, "-m", "hopit.connections"],
             desc="Display active network connections in a beautiful table",
-            needs_arg=False,
-            mode="capture",
-        ),
-        "hostname": Command(
-            run=lambda arg: (["powershell", "-Command", f"Rename-Computer -NewName '{arg}'"] if IS_WINDOWS else ["hostname", arg]) if arg else ["hostname"],
-            desc="View or change the system's host name: hostname [new_name]",
-            needs_arg=False,
-            mode="capture",
-        ),
-        "gateway": Command(
-            run=lambda _: [sys.executable, "-m", "hopit.gateway"],
-            desc="Display system default gateway IP address",
-            needs_arg=False,
-            mode="capture",
-        ),
-        "mac": Command(
-            run=lambda _: [sys.executable, "-m", "hopit.mac"],
-            desc="Display MAC addresses of active network interfaces",
             needs_arg=False,
             mode="capture",
         ),

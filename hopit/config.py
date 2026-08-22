@@ -214,6 +214,10 @@ def update_console_theme(theme: dict):
     accent_color = theme.get("hopit", "#b8d769")
     git_color = theme.get("git", "#c6df87")
     
+    # If the base color is too dark (like in hopit-dark), use a bright fallback for text readability
+    if accent_color.lower() == "#35433f":
+        accent_color = "#b8d769"
+        
     console.push_theme(Theme({
         "cyan": border_color,
         "bold cyan": f"bold {border_color}",

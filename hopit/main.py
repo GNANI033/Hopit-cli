@@ -52,7 +52,7 @@ from hopit.loaders import (
     MANAGER_PKG,
     MANAGER_DISPLAY_NAME,
 )
-from hopit.commands import build_commands, BUILTIN_DESCRIPTIONS
+from hopit.commands import build_commands, BUILTIN_DESCRIPTIONS, ip_cmd
 from hopit.ui import (
     LazyCompleter,
     resolve_command,
@@ -207,7 +207,7 @@ def show_command_help(cmd_name: str, commands: dict):
         desc = cmd.desc
         sudo_req = cmd.needs_sudo
         
-        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport"):
+        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup"):
             show_context_help([cmd_name], commands)
             return
 
@@ -295,7 +295,11 @@ def show_context_help(words: list[str], commands: dict):
         
     subcmd = words[1].lower() if len(words) > 1 else ""
     if resolved == "show":
-        matched_sub, _ = resolve_subcommand(subcmd, ["file", "start", "end", "tree", "env", "history"])
+        matched_sub, _ = resolve_subcommand(subcmd, ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "lookup":
+        matched_sub, _ = resolve_subcommand(subcmd, ["all", "a", "aaaa", "cname", "mx", "txt", "ns"])
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "create":
@@ -570,6 +574,12 @@ def show_context_help(words: list[str], commands: dict):
             table.add_row("[green]tree [path][/green]", "Show directory structure in a tree (tree)")
             table.add_row("[green]env [filter][/green]", "View or filter environment variables (env)")
             table.add_row("[green]history[/green]", "Show the session command history (history)")
+            table.add_row("[green]arp [args][/green]", "View Address Resolution Protocol (ARP) table")
+            table.add_row("[green]mac[/green]", "Display MAC addresses of active network interfaces")
+            table.add_row("[green]gateway[/green]", "Display system default gateway IP address")
+            table.add_row("[green]ip[/green]", "Show IP addresses and network interfaces")
+            table.add_row("[green]route [args][/green]", "View the system network routing table")
+            table.add_row("[green]hostname [new_name][/green]", "View or change the system's host name")
             console.print(Panel(table, title=title, border_style="cyan", expand=False))
         elif subcmd == "file":
             if not rest:
@@ -596,10 +606,45 @@ def show_context_help(words: list[str], commands: dict):
                 console.print(Panel("[yellow][filter][/yellow]  Specify optional filter term", title=title, border_style="cyan", expand=False))
             else:
                 console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        elif subcmd == "history":
+        elif subcmd in ("history", "mac", "gateway", "ip"):
             console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "arp":
+            if not rest:
+                console.print(Panel("[yellow][args][/yellow]  Optional arguments for the arp command", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "route":
+            if not rest:
+                console.print(Panel("[yellow][args][/yellow]  Optional arguments for the route command", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        elif subcmd == "hostname":
+            if not rest:
+                console.print(Panel("[yellow][new_name][/yellow]  Optional new hostname to set", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
         else:
             console.print(Panel(f"Unknown subcommand '{subcmd}'.", title=title, border_style="cyan", expand=False))
+        return
+
+    if resolved == "lookup":
+        if not subcmd:
+            table = Table(show_header=False, box=None, padding=(0, 2))
+            table.add_row("[green]all <host_or_ip>[/green]", "Perform consolidated diagnostics (DNS, Ping, HTTP, Traceroute)")
+            table.add_row("[green]A <host>[/green]", "Query DNS A records (IPv4 addresses)")
+            table.add_row("[green]AAAA <host>[/green]", "Query DNS AAAA records (IPv6 addresses)")
+            table.add_row("[green]CNAME <host>[/green]", "Query DNS CNAME records (canonical names)")
+            table.add_row("[green]MX <host>[/green]", "Query DNS MX records (mail exchangers)")
+            table.add_row("[green]TXT <host>[/green]", "Query DNS TXT records (text records)")
+            table.add_row("[green]NS <host>[/green]", "Query DNS NS records (name servers)")
+            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+        elif subcmd in ("all", "a", "aaaa", "cname", "mx", "txt", "ns"):
+            if not rest:
+                console.print(Panel("[yellow]<host_or_ip>[/yellow]  Specify the target hostname or IP address", title=title, border_style="cyan", expand=False))
+            else:
+                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+        else:
+            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected all, A, AAAA, CNAME, MX, TXT, or NS.", title=title, border_style="cyan", expand=False))
         return
 
     if resolved == "find":
@@ -841,7 +886,16 @@ def execute_line(
         intended_words = [name]
         if name == "show" and rest:
             sub_token = rest[0].lower()
-            valid_subs = ["file", "start", "end", "tree", "env", "history"]
+            valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname"]
+            subcmd, _ = resolve_subcommand(sub_token, valid_subs)
+            if subcmd:
+                intended_words.append(subcmd)
+                intended_words.extend(rest[1:])
+            else:
+                intended_words.extend(rest)
+        elif name == "lookup" and rest:
+            sub_token = rest[0].lower()
+            valid_subs = ["all", "a", "aaaa", "cname", "mx", "txt", "ns"]
             subcmd, _ = resolve_subcommand(sub_token, valid_subs)
             if subcmd:
                 intended_words.append(subcmd)
@@ -933,12 +987,12 @@ def execute_line(
 
     if name == "show":
         if not rest:
-            console.print("[yellow]Usage: show [file|start|end|tree|env|history] [arguments][/yellow]")
+            console.print("[yellow]Usage: show [file|start|end|tree|env|history|arp|mac|gateway|ip|route|hostname] [arguments][/yellow]")
             return True
         sub_token = rest[0].lower()
         subargs = rest[1:]
         
-        valid_subs = ["file", "start", "end", "tree", "env", "history"]
+        valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname"]
         subcmd, matches = resolve_subcommand(sub_token, valid_subs)
         
         if not subcmd:
@@ -999,6 +1053,49 @@ def execute_line(
                     console.print(f"  [cyan]{i:5}[/cyan]  {cmd_entry}")
             else:
                 console.print("[yellow]No command history available in this session.[/yellow]")
+        elif subcmd == "arp":
+            real_cmd = (["arp", "-a"] + subargs) if IS_WINDOWS else ((["arp", "-an"] + subargs) if IS_MACOS else (["ip", "neigh"] + subargs))
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show arp", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show arp: {e}[/red]")
+        elif subcmd == "mac":
+            real_cmd = [sys.executable, "-m", "hopit.mac"] + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show mac", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show mac: {e}[/red]")
+        elif subcmd == "gateway":
+            real_cmd = [sys.executable, "-m", "hopit.gateway"] + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show gateway", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show gateway: {e}[/red]")
+        elif subcmd == "ip":
+            real_cmd = ip_cmd() + subargs
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show ip", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show ip: {e}[/red]")
+        elif subcmd == "route":
+            real_cmd = (["route", "print"] + subargs) if IS_WINDOWS else ((["netstat", "-rn"] + subargs) if IS_MACOS else (["ip", "route"] + subargs))
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show route", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show route: {e}[/red]")
+        elif subcmd == "hostname":
+            arg = " ".join(subargs) if subargs else ""
+            real_cmd = (["powershell", "-Command", f"Rename-Computer -NewName '{arg}'"] if IS_WINDOWS else ["hostname", arg]) if arg else ["hostname"]
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show hostname", cmd_arg=arg, show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show hostname: {e}[/red]")
         return True
 
     if name == "find":
