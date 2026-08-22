@@ -65,6 +65,7 @@ from hopit.ui import (
 )
 from hopit.translation import translate_cross_platform
 
+user_session_shortcuts = set()
 
 def create_prompt_style(theme: dict) -> Style:
     def get_fg(bg_color: str) -> str:
@@ -1313,6 +1314,7 @@ def execute_line(
             if alias_val.endswith(" $*"):
                 alias_val = alias_val[:-3]
             aliases[alias_name] = alias_val
+            user_session_shortcuts.add(alias_name)
             console.print(f"[green]Shortcut added (Temporary)![/green] {alias_name} → {alias_val}")
             return True
         elif not arg_str or arg_str.lower() == "/macros":
@@ -1449,6 +1451,7 @@ def execute_line(
             table = Table(title="CLI Shortcuts (Aliases)", show_header=True, header_style="bold cyan")
             table.add_column("Shortcut Name", style="cyan")
             table.add_column("Command", style="yellow")
+            table.add_column("Origin", style="blue")
             table.add_column("Persistence", style="magenta")
 
             rc = shell_rc_file(shell)
@@ -1480,8 +1483,17 @@ def execute_line(
                 
             for k in sorted(all_keys):
                 val = aliases.get(k, permanent_aliases.get(k))
-                persistence = "[bold green]Permanent[/bold green]" if k in permanent_aliases else "[bold yellow]Temporary[/bold yellow]"
-                table.add_row(k, val, persistence)
+                
+                is_permanent = k in permanent_aliases
+                is_user_session = k in user_session_shortcuts
+                
+                if is_permanent or is_user_session:
+                    origin = "[bold blue]User Created[/bold blue]"
+                else:
+                    origin = "[dim]System Default[/dim]"
+                    
+                persistence = "[bold green]Permanent[/bold green]" if is_permanent else "[bold yellow]Temporary[/bold yellow]"
+                table.add_row(k, val, origin, persistence)
                 
             console.print(table)
         elif subcmd == "arp":
@@ -2438,7 +2450,7 @@ def main():
 
     commands = build_commands(manager, names)
     all_names = list(commands.keys()) + list(BUILTIN_DESCRIPTIONS.keys())
-    completer = LazyCompleter(commands)
+    completer = LazyCompleter(commands, aliases)
 
     def bottom_toolbar():
         return HTML(" <b>Tab</b> complete  •  <b>Enter</b> run  •  <b>Ctrl-D</b> quit  •  type 'help'")

@@ -763,8 +763,9 @@ def _run_silent_list(resource: str, namespace: str = "default") -> list[str]:
 
 
 class LazyCompleter(Completer):
-    def __init__(self, commands: dict):
+    def __init__(self, commands: dict, aliases: dict = None):
         self.commands = commands
+        self.aliases = aliases or {}
         aliases_to_hide = {
             "permissions", "drive", "compress", "ps", "where", "findcommand",
             "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
