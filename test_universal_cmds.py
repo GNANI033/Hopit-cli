@@ -237,5 +237,34 @@ class TestUniversalCommands(unittest.TestCase):
         for cmd in new_cmds:
             self.assertIn(cmd, cmds, f"{cmd} should be registered in commands dict")
 
+    def test_cross_platform_compatibility(self):
+        import os
+        import shlex
+        from hopit.config import IS_WINDOWS
+        
+        # Check PYTHONPATH is in environment and contains parent of hopit
+        self.assertIn("PYTHONPATH", os.environ)
+        pythonpath = os.environ["PYTHONPATH"]
+        self.assertTrue(any(os.path.isdir(os.path.join(p, "hopit")) for p in pythonpath.split(os.pathsep) if os.path.exists(p)))
+        
+        # Test shlex.split behavior
+        # Under Windows (posix=False), backslashes should not escape characters.
+        # Under POSIX (posix=True), backslashes escape characters.
+        test_path = r"C:\Users\Ramesh\Downloads\11.pdf"
+        if IS_WINDOWS:
+            # On Windows, it should preserve the backslashes
+            self.assertEqual(shlex.split(test_path)[0], test_path)
+        else:
+            # On non-Windows, we can explicitly test that the wrapper functions as expected:
+            from hopit.commands import _custom_split
+            
+            # If posix=True, backslashes escape
+            escaped = _custom_split(test_path, posix=True)[0]
+            self.assertNotEqual(escaped, test_path)
+            
+            # If posix=False, backslashes are preserved
+            preserved = _custom_split(test_path, posix=False)[0]
+            self.assertEqual(preserved, test_path)
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,18 @@
 import os
 import sys
+
+# Ensure the parent directory containing the hopit package is in PYTHONPATH so subprocesses can locate hopit
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+existing_pythonpath = os.environ.get("PYTHONPATH", "")
+if parent_dir not in existing_pythonpath.split(os.pathsep):
+    if existing_pythonpath:
+        os.environ["PYTHONPATH"] = f"{parent_dir}{os.pathsep}{existing_pythonpath}"
+    else:
+        os.environ["PYTHONPATH"] = parent_dir
+
 import shlex
 import shutil
 import subprocess
@@ -772,7 +785,14 @@ def execute_line(
         if not query:
             # Just "?" was typed: list all commands
             console.print("\n[bold cyan]Available Commands:[/bold cyan]")
+            aliases_to_hide = {
+                "permissions", "drive", "compress", "ps", "where", "findcommand",
+                "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
+                "scrollfile", "findfile", "findtext", "whereami"
+            }
             for name in sorted(all_names):
+                if name in aliases_to_hide:
+                    continue
                 desc = commands[name].desc if name in commands else BUILTIN_DESCRIPTIONS.get(name, "")
                 console.print(f"  [green]{name:15}[/green] : {desc}")
             console.print()

@@ -186,6 +186,12 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
     if len(words) < 2:
         return []
     cmd = words[0].lower()
+    if cmd == "permissions":
+        cmd = "permission"
+    elif cmd == "drive":
+        cmd = "disk"
+    elif cmd == "compress":
+        cmd = "archive"
     
     if cmd == "user":
         if len(words) == 2:
@@ -234,7 +240,7 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
             groups = load_groups()
             return [(g, "👥 group") for g in groups]
             
-    elif cmd in ("permission", "permissions"):
+    elif cmd == "permission":
         if len(words) == 2:
             perm_subs = {
                 "set": "Set read/write/execute permissions (chmod)",
@@ -382,7 +388,12 @@ def get_user_group_perm_completions(words: list[str], commands: dict) -> list[tu
 class LazyCompleter(Completer):
     def __init__(self, commands: dict):
         self.commands = commands
-        self.all_names = [k for k in commands if k not in ("permissions", "drive", "compress")] + list(BUILTIN_DESCRIPTIONS.keys())
+        aliases_to_hide = {
+            "permissions", "drive", "compress", "ps", "where", "findcommand",
+            "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
+            "scrollfile", "findfile", "findtext", "whereami"
+        }
+        self.all_names = [k for k in commands if k not in aliases_to_hide] + list(BUILTIN_DESCRIPTIONS.keys())
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -394,12 +405,38 @@ class LazyCompleter(Completer):
         if len(words) > 1:
             head = words[0].lower()
             resolved, _ = resolve_command(self.all_names, head)
+            
+            # Map aliases to primary command names
             if head == "permissions":
                 resolved = "permission"
             elif head == "drive":
                 resolved = "disk"
             elif head == "compress":
                 resolved = "archive"
+            elif head == "ps":
+                resolved = "processes"
+            elif head == "where" or head == "findcommand":
+                resolved = "which"
+            elif head == "adduser":
+                resolved = "useradd"
+            elif head == "deluser":
+                resolved = "userdel"
+            elif head == "addgroup":
+                resolved = "groupadd"
+            elif head == "delgroup":
+                resolved = "groupdel"
+            elif head == "viewstart":
+                resolved = "head"
+            elif head == "viewend":
+                resolved = "tail"
+            elif head == "scrollfile":
+                resolved = "less"
+            elif head == "findfile":
+                resolved = "find"
+            elif head == "findtext":
+                resolved = "grep"
+            elif head == "whereami":
+                resolved = "pwd"
 
             if resolved == "git":
                 git_candidates = get_git_completions(words)
@@ -442,7 +479,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "show"):
+            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show"):
                 candidates = get_user_group_perm_completions(words, self.commands)
                 word_lower = word.lower()
                 matches = []
@@ -626,16 +663,28 @@ def print_help(commands: dict, manager: str | None):
         "disk": [
             ("list", "List all storage drives/partitions"),
             ("usage", "Show directory storage usage: disk usage <path>"),
+            ("mount", "Mount a drive or partition: disk mount <dev> <target>"),
+            ("unmount", "Unmount a mounted volume: disk unmount <target>"),
+            ("check", "Perform filesystem integrity check: disk check <target>"),
         ],
-        "drive": [
-            ("list", "List all storage drives/partitions"),
-            ("usage", "Show directory storage usage: drive usage <path>"),
+        "archive": [
+            ("create", "Create a compressed archive: archive create <out.zip> <path>"),
+            ("extract", "Extract a compressed archive: archive extract <archive> [dest]"),
+        ],
+        "find": [
+            ("file", "Search files by name pattern: find file <pattern> [path]"),
+            ("text", "Search text pattern inside files: find text <pattern> [path]"),
+        ],
+        "config": [
+            ("set", "Change a configuration setting: config set <setting> <value>"),
+            ("reset", "Reset configuration to defaults: config reset"),
         ],
         "user": [
             ("add", "Add a new system user: user add <username>"),
             ("remove", "Delete a system user: user remove <username>"),
             ("list", "List system users: user list"),
             ("passwd", "Change user password: user passwd <username>"),
+            ("join", "Add a user to a group: user join <group> <username>"),
         ],
         "group": [
             ("add", "Add a new system group: group add <group>"),
@@ -643,14 +692,9 @@ def print_help(commands: dict, manager: str | None):
             ("list", "List system groups: group list"),
         ],
         "permission": [
-            ("show", "Show permissions of a path: permission show <path>"),
-            ("grant", "Grant permissions: permission grant <owner|group> <rights> <path>"),
-            ("revoke", "Revoke permissions: permission revoke <owner|group> <rights> <path>"),
-        ],
-        "permissions": [
-            ("show", "Show permissions of a path: permissions show <path>"),
-            ("grant", "Grant permissions: permissions grant <owner|group> <rights> <path>"),
-            ("revoke", "Revoke permissions: permissions revoke <owner|group> <rights> <path>"),
+            ("set", "Set read/write/execute permissions (chmod): permission set <perms> <path>"),
+            ("owner", "Change owner of file/folder (chown): permission owner <owner> <path>"),
+            ("group", "Change group of file/folder (chgrp): permission group <group> <path>"),
         ],
     }
 
@@ -658,12 +702,11 @@ def print_help(commands: dict, manager: str | None):
     categories = {
         "📂 File & Directory Management": [
             "list", "cd", "back", "open", "create", "mkdir", "copy", "move", "remove", "show", "archive",
-            "pwd", "whereami", "touch", "cat", "head", "viewstart", "tail", "viewend", "less", "scrollfile",
-            "tree", "find", "findfile", "grep", "findtext", "compress", "search", "disk", "drive"
+            "pwd", "touch", "cat", "head", "tail", "less", "tree", "find", "grep", "search", "disk"
         ],
         "⚙️ Process & System Resources": [
-            "processes", "ps", "process", "top", "kill", "pkill", "killport", "sysinfo", "resources", "sqlite",
-            "containers", "config", "alias", "history", "env", "which", "where", "findcommand", "reboot",
+            "processes", "process", "top", "kill", "pkill", "killport", "sysinfo", "resources", "sqlite",
+            "containers", "config", "alias", "history", "env", "which", "reboot",
             "shutdown", "cancel", "port"
         ],
         "🌐 Network & Web Diagnostics": [
@@ -672,9 +715,9 @@ def print_help(commands: dict, manager: str | None):
         ],
         "🔒 Remote Access, Services & Security": [
             "ssh", "scp", "sftp", "download", "wget", "curl", "firewall", "user", "group", "permission",
-            "permissions", "status", "start", "stop", "restart", "logs", "live", "enable", "disable",
-            "chmod", "chown", "chgrp", "useradd", "adduser", "userdel", "deluser", "usermod", "passwd",
-            "groupadd", "addgroup", "groupdel", "delgroup"
+            "status", "start", "stop", "restart", "logs", "live", "enable", "disable",
+            "chmod", "chown", "chgrp", "useradd", "userdel", "usermod", "passwd",
+            "groupadd", "groupdel"
         ],
         "🛠️ Version Control (Git)": [
             "git", "gitsave"
@@ -691,9 +734,15 @@ def print_help(commands: dict, manager: str | None):
     categorized_names.update(builtins)
 
     # Anything else in commands goes to Miscellaneous
+    aliases_to_hide = {
+        "permissions", "drive", "compress", "ps", "where", "findcommand",
+        "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
+        "scrollfile", "findfile", "findtext", "whereami"
+    }
+
     misc = []
     for name in commands:
-        if name not in categorized_names:
+        if name not in categorized_names and name not in aliases_to_hide:
             misc.append(name)
             
     if misc:

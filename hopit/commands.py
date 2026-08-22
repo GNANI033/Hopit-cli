@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
 from hopit.config import IS_WINDOWS, IS_MACOS
+
+# Wrap shlex.split to support Windows paths by default
+_orig_split = shlex.split
+def _custom_split(s, *args, **kwargs):
+    if "posix" not in kwargs and len(args) < 2:
+        kwargs["posix"] = not IS_WINDOWS
+    return _orig_split(s, *args, **kwargs)
+shlex.split = _custom_split
+
 from hopit.loaders import MANAGER_PKG, MANAGER_DISPLAY_NAME, MANAGER_UPDATE_CMDS
 
 @dataclass
