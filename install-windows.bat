@@ -3,7 +3,7 @@ goto :Batch
 
 <#
 :Batch
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& { Get-Content -LiteralPath $args[0] | Select-Object -Skip 8 | Out-String | iex }" "%~f0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content -LiteralPath $args[0] | Select-Object -Skip 8 | Out-String | iex" "%~f0"
 exit /b %errorlevel%
 #>
 
