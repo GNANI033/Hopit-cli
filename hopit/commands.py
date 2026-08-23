@@ -651,6 +651,14 @@ def build_commands(manager: str | None, names: dict) -> dict:
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),
+        "ls": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.ls"] + (shlex.split(arg) if arg else []),
+            desc="List directory contents: ls [options] [path]",
+            needs_arg=False,
+            mode="capture",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
         "cd": Command(
             run=lambda path: [],  # handled specially in main loop
             desc="Change directory",
@@ -698,10 +706,26 @@ def build_commands(manager: str | None, names: dict) -> dict:
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),
+        "cp": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.cp"] + (shlex.split(arg) if arg else []),
+            desc="Copy files and directories: cp [options] <src> <dest>",
+            needs_arg=True,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
         "move": Command(
             run=lambda _: [],  # handled specially in main loop
             desc="Move or rename a file or folder: move <src> <dest>",
             needs_arg=True,
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "mv": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.mv"] + (shlex.split(arg) if arg else []),
+            desc="Move or rename files and directories: mv [options] <src> <dest>",
+            needs_arg=True,
+            mode="stream",
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),
@@ -712,10 +736,19 @@ def build_commands(manager: str | None, names: dict) -> dict:
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),
-        "mkdir": Command(
-            run=lambda _: [],  # handled specially in main loop
-            desc="Create a directory (including parents): mkdir <path>",
+        "rm": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.rm"] + (shlex.split(arg) if arg else []),
+            desc="Delete files or directories: rm [options] <path>",
             needs_arg=True,
+            mode="stream",
+            arg_completions=names["path"],
+            arg_completion_kind="path",
+        ),
+        "mkdir": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.mkdir"] + (shlex.split(arg) if arg else []),
+            desc="Create directories: mkdir [options] <path>",
+            needs_arg=True,
+            mode="stream",
             arg_completions=names["path"],
             arg_completion_kind="path",
         ),

@@ -1999,17 +1999,7 @@ def execute_line(
             console.print(f"[red]remove: {e}[/red]")
         return True
 
-    if name == "mkdir":
-        if not rest:
-            console.print("[yellow]Usage: mkdir <path>[/yellow]")
-            return True
-        try:
-            target_path = os.path.expanduser(rest[0])
-            os.makedirs(target_path, exist_ok=True)
-            console.print(f"[green]Created folder:[/green] {target_path}")
-        except Exception as e:
-            console.print(f"[red]mkdir: {e}[/red]")
-        return True
+
 
     if name == "create":
         if not rest:

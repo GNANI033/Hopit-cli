@@ -11,12 +11,86 @@ from hopit.config import IS_WINDOWS, IS_MACOS
 def get_windows_sessions():
     try:
         proc = subprocess.run(["query", "user"], capture_output=True, text=True, check=True)
-        return proc.stdout
-    except Exception as e:
+        if proc.stdout and proc.stdout.strip():
+            return proc.stdout
+    except Exception:
+        pass
+        
+    try:
+        proc = subprocess.run(["qwinsta"], capture_output=True, text=True, check=True)
+        if proc.stdout and proc.stdout.strip():
+            return proc.stdout
+    except Exception:
+        pass
+        
+    try:
+        ps_script = (
+            "Get-CimInstance Win32_LogonSession | "
+            "Where-Object { $_.LogonType -in @(2, 7, 10, 11) } | "
+            "ForEach-Object { "
+                "$session = $_; "
+                "$user = (Get-CimInstance Win32_LoggedOnUser | Where-Object { $_.Dependent.LogonId -eq $session.LogonId }).Antecedent.Name; "
+                "if ($user) { "
+                    "[PSCustomObject]@{ "
+                        "USERNAME = $user; "
+                        "SESSIONNAME = if ($session.LogonType -eq 2) { 'Console' } elseif ($session.LogonType -eq 10) { 'RDP' } else { 'Local' }; "
+                        "ID = $session.LogonId; "
+                        "STATE = 'Active'; "
+                        "IDLE_TIME = '-'; "
+                        "LOGON_TIME = $session.StartTime.ToString('yyyy-MM-dd HH:mm:ss') "
+                    "} "
+                "} "
+            "} | ConvertTo-Json -Compress"
+        )
+        proc = subprocess.run(["powershell", "-Command", ps_script], capture_output=True, text=True, check=True)
+        if proc.stdout and proc.stdout.strip():
+            return proc.stdout
+    except Exception:
+        pass
+        
+    try:
+        import getpass
+        username = getpass.getuser()
+        lines = [
+            "USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME",
+            f">{username:<21}Console             1  Active          -  -"
+        ]
+        return "\n".join(lines)
+    except Exception:
         return None
 
 def parse_windows_sessions(output: str):
-    lines = output.strip().splitlines()
+    if not output:
+        return []
+    output_strip = output.strip()
+    if output_strip.startswith("[") or output_strip.startswith("{"):
+        import json
+        try:
+            data = json.loads(output_strip)
+            if isinstance(data, dict):
+                data = [data]
+            rows = []
+            import getpass
+            current_user = getpass.getuser().lower()
+            for item in data:
+                username = item.get("USERNAME", "") or item.get("Username", "")
+                if not username:
+                    continue
+                current = username.lower() == current_user
+                rows.append({
+                    "username": username,
+                    "sessionname": item.get("SESSIONNAME", "Console") or item.get("SessionName", "Console"),
+                    "id": str(item.get("ID", "") or item.get("Id", "") or item.get("SessionId", "")),
+                    "state": item.get("STATE", "Active") or item.get("State", "Active"),
+                    "idle": item.get("IDLE_TIME", "-") or item.get("Idle", "-"),
+                    "logon": item.get("LOGON_TIME", "-") or item.get("LogonTime", "-"),
+                    "current": current
+                })
+            return rows
+        except Exception:
+            pass
+
+    lines = output_strip.splitlines()
     if not lines:
         return []
     
@@ -29,32 +103,61 @@ def parse_windows_sessions(output: str):
     idx_logon = header.find("LOGON TIME")
     
     rows = []
+    import getpass
+    current_user = getpass.getuser().lower()
+    
     for line in lines[1:]:
         if not line.strip():
             continue
-        if idx_username != -1 and idx_sessionname != -1 and idx_id != -1 and idx_state != -1 and idx_idle != -1 and idx_logon != -1:
-            username = line[idx_username:idx_sessionname].strip()
-            sessionname = line[idx_sessionname:idx_id].strip()
-            session_id = line[idx_id:idx_state].strip()
-            state = line[idx_state:idx_idle].strip()
-            idle = line[idx_idle:idx_logon].strip()
-            logon = line[idx_logon:].strip()
+        
+        if idx_username != -1 and idx_sessionname != -1 and idx_id != -1 and idx_state != -1:
+            indices = sorted([
+                (idx_username, "username"),
+                (idx_sessionname, "sessionname"),
+                (idx_id, "id"),
+                (idx_state, "state"),
+                (idx_idle if idx_idle != -1 else 9999, "idle"),
+                (idx_logon if idx_logon != -1 else 9999, "logon")
+            ])
+            
+            val_map = {}
+            for i, (start_idx, name) in enumerate(indices):
+                if start_idx == 9999:
+                    val_map[name] = "-"
+                    continue
+                end_idx = indices[i+1][0] if i+1 < len(indices) and indices[i+1][0] != 9999 else len(line)
+                val_map[name] = line[start_idx:end_idx].strip()
+                
+            username = val_map.get("username", "")
+            sessionname = val_map.get("sessionname", "")
+            session_id = val_map.get("id", "")
+            state = val_map.get("state", "")
+            idle = val_map.get("idle", "-")
+            logon = val_map.get("logon", "-")
         else:
             parts = line.split()
-            if len(parts) >= 5:
+            if len(parts) >= 2:
                 username = parts[0]
-                sessionname = parts[1] if not parts[2].isdigit() else ""
-                idx = 2 if sessionname else 1
-                session_id = parts[idx]
-                state = parts[idx+1]
-                idle = parts[idx+2]
-                logon = " ".join(parts[idx+3:])
+                sessionname = parts[1]
+                session_id = parts[2] if len(parts) > 2 else "-"
+                state = parts[3] if len(parts) > 3 else "Active"
+                idle = "-"
+                logon = "-"
             else:
                 continue
         
+        if not username:
+            continue
+            
         current = False
         if username.startswith(">"):
             username = username.lstrip(">").strip()
+            current = True
+        if sessionname.startswith(">"):
+            sessionname = sessionname.lstrip(">").strip()
+            current = True
+            
+        if username.lower() == current_user:
             current = True
             
         rows.append({

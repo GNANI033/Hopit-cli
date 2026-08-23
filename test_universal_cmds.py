@@ -284,14 +284,17 @@ class TestUniversalCommands(unittest.TestCase):
     def test_session_translations(self):
         from hopit.translation import translate_cross_platform
         from unittest.mock import patch
+        import sys
 
         # Test Unix -> Windows
         with patch("hopit.translation.IS_WINDOWS", True), patch("hopit.translation.IS_MACOS", False):
-            self.assertEqual(translate_cross_platform(["w"]), "query user")
-            self.assertEqual(translate_cross_platform(["w", "gnani"]), 'query user "gnani"')
-            self.assertEqual(translate_cross_platform(["who"]), "query user")
-            self.assertEqual(translate_cross_platform(["loginctl", "list-sessions"]), "query session")
-            self.assertEqual(translate_cross_platform(["loginctl", "terminate-session", "2"]), "logoff 2")
+            from hopit.translation import _q
+            py_exe = _q(sys.executable)
+            self.assertEqual(translate_cross_platform(["w"]), f"{py_exe} -m hopit.sessions list")
+            self.assertEqual(translate_cross_platform(["w", "gnani"]), f'{py_exe} -m hopit.sessions list "gnani"')
+            self.assertEqual(translate_cross_platform(["who"]), f"{py_exe} -m hopit.sessions list")
+            self.assertEqual(translate_cross_platform(["loginctl", "list-sessions"]), f"{py_exe} -m hopit.sessions list")
+            self.assertEqual(translate_cross_platform(["loginctl", "terminate-session", "2"]), f"{py_exe} -m hopit.sessions kill 2")
 
         # Test Windows -> Linux
         with patch("hopit.translation.IS_WINDOWS", False), patch("hopit.translation.IS_MACOS", False):
@@ -499,6 +502,85 @@ class TestUniversalCommands(unittest.TestCase):
             mock_print.assert_called()
             panel = mock_print.call_args[0][0]
             self.assertIn("Help: lookup ?", str(panel.title))
+
+    def test_emulated_filesystem_commands(self):
+        import tempfile
+        import shutil
+        import os
+        from hopit.ls import list_directory
+        from hopit.rm import main as rm_main
+        from hopit.cp import main as cp_main
+        from hopit.mv import main as mv_main
+        from hopit.mkdir import main as mkdir_main
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 1. Test mkdir (mkdir_main)
+            dir1 = os.path.join(tmpdir, "dir1")
+            dir2 = os.path.join(tmpdir, "dir2", "nested")
+            
+            # Create dir1 (no parents needed)
+            with patch("sys.argv", ["mkdir", dir1]):
+                mkdir_main()
+            self.assertTrue(os.path.isdir(dir1))
+            
+            # Create dir2/nested (fails without -p)
+            with patch("sys.argv", ["mkdir", dir2]):
+                mkdir_main()
+            self.assertFalse(os.path.isdir(dir2))
+            
+            # Create dir2/nested (with -p)
+            with patch("sys.argv", ["mkdir", "-p", dir2]):
+                mkdir_main()
+            self.assertTrue(os.path.isdir(dir2))
+            
+            # 2. Test cp (cp_main)
+            file1 = os.path.join(dir1, "file1.txt")
+            with open(file1, "w") as f:
+                f.write("hello")
+                
+            file2 = os.path.join(dir1, "file2.txt")
+            # copy file
+            with patch("sys.argv", ["cp", file1, file2]):
+                cp_main()
+            self.assertTrue(os.path.isfile(file2))
+            
+            # copy directory (fails without -r)
+            dir3 = os.path.join(tmpdir, "dir3")
+            with patch("sys.argv", ["cp", dir1, dir3]):
+                cp_main()
+            self.assertFalse(os.path.isdir(dir3))
+            
+            # copy directory (with -r)
+            with patch("sys.argv", ["cp", "-r", dir1, dir3]):
+                cp_main()
+            self.assertTrue(os.path.isdir(dir3))
+            self.assertTrue(os.path.isfile(os.path.join(dir3, "file1.txt")))
+            
+            # 3. Test ls (list_directory)
+            with patch("hopit.ls.console.print") as mock_print:
+                self.assertTrue(list_directory(dir1, set()))
+                mock_print.assert_called()
+                
+            # 4. Test mv (mv_main)
+            file3 = os.path.join(tmpdir, "file3.txt")
+            with patch("sys.argv", ["mv", file2, file3]):
+                mv_main()
+            self.assertFalse(os.path.exists(file2))
+            self.assertTrue(os.path.isfile(file3))
+            
+            # 5. Test rm (rm_main)
+            with patch("sys.argv", ["rm", file3]):
+                rm_main()
+            self.assertFalse(os.path.exists(file3))
+            
+            with patch("sys.argv", ["rm", dir3]):
+                rm_main()
+            self.assertTrue(os.path.isdir(dir3))
+            
+            with patch("sys.argv", ["rm", "-r", dir3]):
+                rm_main()
+            self.assertFalse(os.path.exists(dir3))
 
 if __name__ == "__main__":
     unittest.main()

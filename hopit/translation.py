@@ -1,5 +1,6 @@
 import os
 import shlex
+import sys
 from hopit.config import IS_WINDOWS, IS_MACOS
 
 def _q(s: str) -> str:
@@ -324,12 +325,11 @@ def translate_win_net_to_unix(args: list[str]) -> str:
 # --- Linux/macOS -> Windows ------------------------------------------------
 _UNIX_TO_WIN: dict = {
     # -- file ops ----------------------------------------------------------
-    "cp":       lambda a: (f'xcopy /E /I /H /Y {_q(a[0])} {_q(a[1])}' if len(a)>=2 and os.path.isdir(a[0])
-                           else 'copy ' + _join(a)),
-    "mv":       lambda a: 'move ' + _join(a),
-    "rm":       lambda a: ('rd /s /q ' if any(x in ('-r','-rf','-fr','-Rf') for x in a) else 'del /Q ')
-                           + ' '.join(_q(x) for x in a if not x.startswith('-')),
-    "ls":       lambda a: 'dir ' + _join(a),
+    "cp":       lambda a: f'{_q(sys.executable)} -m hopit.cp ' + _join(a),
+    "mv":       lambda a: f'{_q(sys.executable)} -m hopit.mv ' + _join(a),
+    "rm":       lambda a: f'{_q(sys.executable)} -m hopit.rm ' + _join(a),
+    "ls":       lambda a: f'{_q(sys.executable)} -m hopit.ls ' + _join(a),
+    "mkdir":    lambda a: f'{_q(sys.executable)} -m hopit.mkdir ' + _join(a),
     "cat":      lambda a: 'type ' + _files(a),
     "touch":    lambda a: f'type nul > {_q(a[0])}' if a else 'type nul',
     "head":     lambda a: 'powershell -Command "Get-Content ' + _files(a) + ' -TotalCount ' + _nval(a,'n') + '"',
@@ -435,9 +435,13 @@ _UNIX_TO_WIN: dict = {
                              else 'sc stop ' + _q(a[1]) if len(a)>=2 and a[0]=='stop'
                              else 'sc query ' + (_q(a[1]) if len(a)>=2 else '')),
     "alias":    lambda a: 'doskey ' + ' '.join(a).replace("='", "=").replace("'", " $*") if a else 'doskey /macros',
-    "w":        lambda a: 'query user ' + _join(a) if a else 'query user',
-    "who":      lambda a: 'query user ' + _join(a) if a else 'query user',
-    "loginctl": lambda a: ('query session' if a and a[0] == 'list-sessions' else (f'logoff {a[1]}' if len(a) >= 2 and a[0] in ('terminate-session', 'kill-session') else 'query session')),
+    "w":        lambda a: f'{_q(sys.executable)} -m hopit.sessions list ' + _join(a),
+    "who":      lambda a: f'{_q(sys.executable)} -m hopit.sessions list ' + _join(a),
+    "loginctl": lambda a: f'{_q(sys.executable)} -m hopit.sessions ' + (('kill ' + a[1]) if len(a) >= 2 and a[0] in ('terminate-session', 'kill-session') else 'list'),
+    "quser":    lambda a: f'{_q(sys.executable)} -m hopit.sessions list ' + _join(a),
+    "qwinsta":  lambda a: f'{_q(sys.executable)} -m hopit.sessions list ' + _join(a),
+    "query":    lambda a: f'{_q(sys.executable)} -m hopit.sessions list ' + _join(a[1:]) if a and a[0].lower() == 'user' else f'{_q(sys.executable)} -m hopit.sessions list ' + _join(a),
+    "logoff":   lambda a: f'{_q(sys.executable)} -m hopit.sessions kill ' + _join(a),
 }
 
 # --- Windows -> Linux/macOS ------------------------------------------------
