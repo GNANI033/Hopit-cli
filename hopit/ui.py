@@ -182,6 +182,71 @@ def get_git_completions(words: list[str]) -> list[tuple[str, str]]:
     return []
 
 
+def get_active_sessions_list() -> list[tuple[str, str]]:
+    candidates = []
+    if IS_WINDOWS:
+        try:
+            proc = subprocess.run(["query", "user"], capture_output=True, text=True)
+            if proc.returncode == 0:
+                lines = proc.stdout.strip().splitlines()
+                if len(lines) > 1:
+                    header = lines[0]
+                    idx_username = header.find("USERNAME")
+                    idx_session = header.find("SESSIONNAME")
+                    idx_id = header.find("ID")
+                    for line in lines[1:]:
+                        if line.strip():
+                            username = line[idx_username:idx_session].strip().lstrip(">").strip()
+                            session_id = line[idx_id:idx_id+5].strip()
+                            candidates.append((session_id, f"Logon session for {username}"))
+                            candidates.append((username, f"User {username}"))
+        except Exception:
+            pass
+    else:
+        try:
+            proc = subprocess.run(["w", "-h"], capture_output=True, text=True)
+            if proc.returncode == 0:
+                for line in proc.stdout.splitlines():
+                    if line.strip():
+                        user = line[0:8].strip()
+                        tty = line[8:17].strip()
+                        candidates.append((tty, f"Logon session for {user}"))
+        except Exception:
+            try:
+                proc = subprocess.run(["who"], capture_output=True, text=True)
+                if proc.returncode == 0:
+                    for line in proc.stdout.splitlines():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            candidates.append((parts[1], f"Logon session for {parts[0]}"))
+            except Exception:
+                pass
+        if shutil.which("tmux"):
+            try:
+                proc = subprocess.run(["tmux", "list-sessions"], capture_output=True, text=True)
+                if proc.returncode == 0:
+                    for line in proc.stdout.splitlines():
+                        if ":" in line:
+                            name = line.split(":")[0]
+                            candidates.append((name, "Tmux session"))
+            except Exception:
+                pass
+        if shutil.which("screen"):
+            try:
+                proc = subprocess.run(["screen", "-list"], capture_output=True, text=True)
+                for line in proc.stdout.splitlines():
+                    line_strip = line.strip()
+                    if not line_strip or "There is a screen on" in line_strip or "Socket" in line_strip:
+                        continue
+                    parts = line_strip.split(maxsplit=2)
+                    if len(parts) >= 1:
+                        name = parts[0]
+                        candidates.append((name, "Screen session"))
+            except Exception:
+                pass
+    return candidates
+
+
 def get_user_group_perm_completions(words: list[str], commands: dict, aliases_dict: dict = None) -> list[tuple[str, str]]:
     if len(words) < 2:
         return []
@@ -192,6 +257,38 @@ def get_user_group_perm_completions(words: list[str], commands: dict, aliases_di
         cmd = "disk"
     elif cmd == "compress":
         cmd = "archive"
+
+    elif cmd in ("w", "who", "quser", "qwinsta"):
+        if len(words) == 2:
+            from hopit.loaders import load_users
+            users = load_users()
+            return [(u, "👤 user") for u in users]
+        return []
+    elif cmd == "query":
+        if len(words) == 2:
+            return [
+                ("user", "List information about logged on users"),
+                ("session", "List information about logon sessions"),
+            ]
+        elif len(words) == 3 and words[1].lower() == "user":
+            from hopit.loaders import load_users
+            users = load_users()
+            return [(u, "👤 user") for u in users]
+        return []
+    elif cmd == "logoff":
+        if len(words) == 2:
+            return get_active_sessions_list()
+        return []
+    elif cmd == "loginctl":
+        if len(words) == 2:
+            return [
+                ("list-sessions", "List active logon sessions"),
+                ("terminate-session", "Terminate/disconnect a logon session"),
+                ("kill-session", "Terminate/disconnect a logon session"),
+            ]
+        elif len(words) == 3 and words[1].lower() in ("terminate-session", "kill-session"):
+            return get_active_sessions_list()
+        return []
     
     if cmd == "user":
         if len(words) == 2:
@@ -278,6 +375,15 @@ def get_user_group_perm_completions(words: list[str], commands: dict, aliases_di
                 from hopit.loaders import load_path_entries
                 paths = load_path_entries(word)
                 return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+
+    elif cmd == "sessions":
+        if len(words) == 2:
+            return [
+                ("list", "List active logon and terminal multiplexer sessions"),
+                ("kill", "Terminate/disconnect a session: sessions kill <session_id/tty/name>"),
+            ]
+        elif len(words) == 3 and words[1].lower() in ("kill", "remove", "delete", "disconnect"):
+            return get_active_sessions_list()
 
     elif cmd == "firewall":
         if len(words) == 2:
@@ -769,7 +875,7 @@ class LazyCompleter(Completer):
         aliases_to_hide = {
             "permissions", "drive", "compress", "ps", "where", "findcommand",
             "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-            "scrollfile", "findfile", "findtext", "whereami", "kubernetes", "doskey"
+            "scrollfile", "findfile", "findtext", "kubernetes", "doskey"
         }
         self.all_names = [k for k in commands if k not in aliases_to_hide] + list(BUILTIN_DESCRIPTIONS.keys())
 
@@ -857,7 +963,7 @@ class LazyCompleter(Completer):
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
-            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "remove", "netconfig", "schedule", "crontab", "schtasks"):
+            elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "remove", "netconfig", "schedule", "crontab", "schtasks", "sessions", "w", "who", "quser", "qwinsta", "query", "logoff", "loginctl"):
                 candidates = get_user_group_perm_completions(words, self.commands, getattr(self, "aliases", None))
                 word_lower = word.lower()
                 matches = []
@@ -1160,6 +1266,14 @@ def print_help(commands: dict, manager: str | None):
             ("passwd", "Change user password: user passwd <username>"),
             ("join", "Add a user to a group: user join <group> <username>"),
         ],
+        "sessions": [
+            ("list", "List active logon and terminal multiplexer (tmux/screen) sessions"),
+            ("kill", "Terminate/disconnect a session: sessions kill <session_id/tty/name>"),
+        ],
+        "session": [
+            ("list", "List active logon and terminal multiplexer (tmux/screen) sessions"),
+            ("kill", "Terminate/disconnect a session: session kill <session_id/tty/name>"),
+        ],
         "group": [
             ("add", "Add a new system group: group add <group>"),
             ("remove", "Delete a system group: group remove <group>"),
@@ -1170,28 +1284,47 @@ def print_help(commands: dict, manager: str | None):
             ("owner", "Change owner of file/folder (chown): permission owner <owner> <path>"),
             ("group", "Change group of file/folder (chgrp): permission group <group> <path>"),
         ],
+        "schedule": [
+            ("list", "List all scheduled tasks"),
+            ("add", "Add a new scheduled task interactively"),
+            ("remove", "Remove an existing scheduled task"),
+            ("edit", "Edit the raw scheduled tasks file"),
+        ],
+        "crontab": [
+            ("-l", "List your scheduled cron jobs"),
+            ("-e", "Edit your cron jobs interactively"),
+            ("-r", "Remove all of your cron jobs"),
+        ],
+        "schtasks": [
+            ("/query", "List all scheduled tasks"),
+            ("/create", "Create a new scheduled task"),
+            ("/delete", "Delete an existing scheduled task"),
+        ],
     }
 
     # Categorized commands mapping
     categories = {
         "📂 File & Directory Management": [
             "list", "cd", "back", "open", "create", "mkdir", "copy", "move", "remove", "show", "archive",
-            "pwd", "touch", "cat", "head", "tail", "less", "tree", "find", "grep", "search", "disk"
+            "pwd", "whereami", "touch", "cat", "head", "tail", "less", "tree", "find", "grep", "search", "disk"
         ],
         "🐍 Python Virtual Environments": [
             "create", "enter",
         ],
         "⚙️ Process & System Resources": [
-            "processes", "process", "top", "kill", "pkill", "killport", "sysinfo", "resources", "sqlite",
+            "processes", "process", "top", "kill", "pkill", "killport", "sysinfo", "whoami", "resources", "sqlite",
             "containers", "config", "history", "env", "which", "reboot",
             "shutdown", "cancel", "port"
+        ],
+        "🕒 Task Scheduling & Automation": [
+            "schedule", "crontab", "schtasks"
         ],
         "🌐 Network & Web Diagnostics": [
             "lookup", "dns", "ping", "traceroute", "nslookup", "connections", "netconfig", "netstat"
         ],
         "🔒 Remote Access, Services & Security": [
             "ssh", "scp", "sftp", "download", "wget", "curl", "firewall", "user", "group", "permission",
-            "status", "start", "stop", "restart", "logs", "live", "enable", "disable",
+            "sessions", "session", "status", "start", "stop", "restart", "logs", "live", "enable", "disable",
             "chmod", "chown", "chgrp", "useradd", "userdel", "usermod", "passwd",
             "groupadd", "groupdel"
         ],
@@ -1216,7 +1349,7 @@ def print_help(commands: dict, manager: str | None):
     aliases_to_hide = {
         "permissions", "drive", "compress", "ps", "where", "findcommand",
         "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-        "scrollfile", "findfile", "findtext", "whereami", "kubernetes", "doskey"
+        "scrollfile", "findfile", "findtext", "kubernetes", "doskey"
     }
 
     misc = []

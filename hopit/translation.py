@@ -435,6 +435,9 @@ _UNIX_TO_WIN: dict = {
                              else 'sc stop ' + _q(a[1]) if len(a)>=2 and a[0]=='stop'
                              else 'sc query ' + (_q(a[1]) if len(a)>=2 else '')),
     "alias":    lambda a: 'doskey ' + ' '.join(a).replace("='", "=").replace("'", " $*") if a else 'doskey /macros',
+    "w":        lambda a: 'query user ' + _join(a) if a else 'query user',
+    "who":      lambda a: 'query user ' + _join(a) if a else 'query user',
+    "loginctl": lambda a: ('query session' if a and a[0] == 'list-sessions' else (f'logoff {a[1]}' if len(a) >= 2 and a[0] in ('terminate-session', 'kill-session') else 'query session')),
 }
 
 # --- Windows -> Linux/macOS ------------------------------------------------
@@ -503,6 +506,10 @@ _WIN_TO_UNIX: dict = {
         if any('=' in x for x in a)
         else ('history' if '/history' in a else 'alias')
     ),
+    "quser":    lambda a: 'w ' + _join(a) if a else 'w',
+    "qwinsta":  lambda a: 'w' if IS_MACOS else 'loginctl list-sessions',
+    "query":    lambda a: ((('w ' + _join(a[1:]) if len(a) >= 2 else 'w') if a[0].lower() == 'user' else ('w' if IS_MACOS else 'loginctl list-sessions')) if a else ('w' if IS_MACOS else 'loginctl list-sessions')),
+    "logoff":   lambda a: (f'pkill -t {a[0]}' if a and not a[0].isdigit() else (f'loginctl terminate-session {a[0]}' if a and not IS_MACOS else f'pkill -t {a[0]}')) if a else 'echo "Usage: logoff <session_id|tty>"',
 }
 
 # --- Linux-specific -> macOS equivalent (applied on macOS only) -----------
@@ -547,6 +554,7 @@ _LINUX_TO_MAC: dict = {
     "addgroup":  lambda a: 'dseditgroup -o create ' + _q(a[0]),
     "groupdel":  lambda a: 'dseditgroup -o delete ' + _q(a[0]),
     "delgroup":  lambda a: 'dseditgroup -o delete ' + _q(a[0]),
+    "loginctl":  lambda a: ('who' if a and a[0] == 'list-sessions' else (f'pkill -t {a[1]}' if len(a) >= 2 and a[0] in ('terminate-session', 'kill-session') else 'who')),
 }
 
 # --- macOS-specific -> Linux equivalent (applied on Linux only) -----------

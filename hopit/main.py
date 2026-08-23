@@ -223,94 +223,7 @@ def run_shell_line(line: str, shell: str):
 
 
 def show_command_help(cmd_name: str, commands: dict):
-    from rich.panel import Panel
-    desc = ""
-    usage = ""
-    sudo_req = False
-
-    if cmd_name in BUILTIN_DESCRIPTIONS:
-        desc = BUILTIN_DESCRIPTIONS[cmd_name]
-        if cmd_name in ("alias", "doskey"):
-            usage = f"{cmd_name} [name='command']\n[bold cyan]Examples:[/bold cyan]\n  {cmd_name}\n  {cmd_name} ll='ls -l'\n  {cmd_name} myip='curl ifconfig.me'"
-        else:
-            usage = cmd_name
-    elif cmd_name in commands:
-        cmd = commands[cmd_name]
-        desc = cmd.desc
-        sudo_req = cmd.needs_sudo
-        
-        if cmd_name in ("user", "group", "permission", "permissions", "firewall", "disk", "drive", "archive", "compress", "download", "search", "killport", "show", "lookup", "enter", "exit", "k8s", "kubernetes", "kubectl", "schedule", "crontab", "schtasks"):
-            show_context_help([cmd_name], commands)
-            return
-
-        # Build usage syntax based on properties
-        if cmd_name == "create":
-            usage = "create [folder|file|venv] <path>"
-        elif cmd_name == "enter":
-            usage = "enter venv <path>"
-        elif cmd_name == "exit":
-            usage = "exit [venv]"
-        elif cmd_name == "git":
-            usage = "git <subcommand> [args...]"
-        elif cmd_name == "sqlite":
-            usage = "sqlite <database_file> [SQL query]"
-        elif cmd_name == "config":
-            usage = "config [set <setting> <value> | reset]"
-        elif cmd_name == "copy":
-            usage = "copy <source> <destination>"
-        elif cmd_name == "move":
-            usage = "move <source> <destination>"
-        elif cmd_name == "reboot":
-            usage = "reboot [minutes | HH:MM]"
-        elif cmd_name == "shutdown":
-            usage = "shutdown [minutes | HH:MM]"
-        elif cmd_name == "chmod":
-            usage = "chmod <permissions> <path>"
-        elif cmd_name == "chown":
-            usage = "chown <owner>[:group] <path>"
-        elif cmd_name == "chgrp":
-            usage = "chgrp <group> <path>"
-        elif cmd_name in ("useradd", "adduser"):
-            usage = f"{cmd_name} <username> [password]"
-        elif cmd_name in ("userdel", "deluser"):
-            usage = f"{cmd_name} <username>"
-        elif cmd_name == "usermod":
-            usage = "usermod -aG <group> <username>"
-        elif cmd_name == "passwd":
-            usage = f"{cmd_name} [username]"
-        elif cmd_name in ("groupadd", "addgroup"):
-            usage = f"{cmd_name} <groupname>"
-        elif cmd_name in ("groupdel", "delgroup"):
-            usage = f"{cmd_name} <groupname>"
-        elif cmd_name in ("status", "start", "stop", "restart", "logs", "live", "enable", "disable"):
-            usage = f"{cmd_name} <service_name>"
-        elif cmd_name in ("install", "uninstall"):
-            usage = f"{cmd_name} <package_name>"
-        elif cmd_name == "netconfig":
-            usage = "netconfig <adapter_name> | reset <adapter> | dhcp release/renew <adapter>"
-        elif cmd_name == "port":
-            usage = "port <port_number | program_name>"
-        elif cmd_name in ("alias", "doskey"):
-            usage = f"{cmd_name} [name='command']\n[bold cyan]Examples:[/bold cyan]\n  {cmd_name}\n  {cmd_name} ll='ls -l'\n  {cmd_name} myip='curl ifconfig.me'"
-        else:
-            if cmd.needs_arg:
-                kind = cmd.arg_completion_kind or "name/path"
-                usage = f"{cmd_name} <{kind}>"
-            else:
-                usage = cmd_name
-
-    help_text = f"[bold cyan]Description:[/bold cyan] {desc}\n"
-    help_text += f"[bold cyan]Usage:[/bold cyan]       [yellow]{usage}[/yellow]\n"
-    if sudo_req:
-        help_text += "[bold red]Note:[/bold red]        Requires root/sudo privileges.\n"
-
-    panel = Panel(
-        help_text.strip(),
-        title=f"[bold green]Help: {cmd_name}[/bold green]",
-        border_style="cyan",
-        expand=False
-    )
-    console.print(panel)
+    show_context_help([cmd_name], commands)
 
 
 def resolve_subcommand(token: str, valid_subcmds: list[str]) -> tuple[str | None, list[str]]:
@@ -326,6 +239,7 @@ def resolve_subcommand(token: str, valid_subcmds: list[str]) -> tuple[str | None
 def show_context_help(words: list[str], commands: dict):
     from rich.panel import Panel
     from rich.table import Table
+    from rich.markup import escape
     
     first_word = words[0].lower()
     resolved, _ = resolve_command(list(commands.keys()) + list(BUILTIN_DESCRIPTIONS.keys()), first_word)
@@ -335,7 +249,7 @@ def show_context_help(words: list[str], commands: dict):
         
     subcmd = words[1].lower() if len(words) > 1 else ""
     if resolved == "show":
-        matched_sub, _ = resolve_subcommand(subcmd, ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname"])
+        matched_sub, _ = resolve_subcommand(subcmd, ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname", "shortcut"])
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "lookup":
@@ -366,615 +280,998 @@ def show_context_help(words: list[str], commands: dict):
         matched_sub, _ = resolve_subcommand(subcmd, ["list", "add", "remove", "edit"])
         if matched_sub:
             subcmd = matched_sub
+    elif resolved == "sessions":
+        matched_sub, _ = resolve_subcommand(subcmd, ["list", "kill"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "query":
+        matched_sub, _ = resolve_subcommand(subcmd, ["user", "session"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "loginctl":
+        matched_sub, _ = resolve_subcommand(subcmd, ["list-sessions", "terminate-session", "kill-session"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved in ("processes", "ps"):
+        matched_sub, _ = resolve_subcommand(subcmd, ["cpu", "mem", "name", "pid"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved in ("archive", "compress"):
+        matched_sub, _ = resolve_subcommand(subcmd, ["create", "extract"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "firewall":
+        matched_sub, _ = resolve_subcommand(subcmd, ["status", "allow", "block", "delete"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved in ("disk", "drive"):
+        matched_sub, _ = resolve_subcommand(subcmd, ["list", "usage", "mount", "unmount", "check", "health", "format"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "user":
+        matched_sub, _ = resolve_subcommand(subcmd, ["add", "remove", "delete", "passwd", "password", "join", "list"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved == "group":
+        matched_sub, _ = resolve_subcommand(subcmd, ["add", "remove", "delete", "list"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved in ("permission", "permissions"):
+        matched_sub, _ = resolve_subcommand(subcmd, ["set", "owner", "group"])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved in ("k8s", "kubernetes"):
+        matched_sub, _ = resolve_subcommand(subcmd, [
+            "pods", "pod", "logs", "follow", "exec", "sh", "deployments", "deployment",
+            "scale", "restart", "rollout", "services", "service", "nodes", "node", "drain",
+            "cordon", "uncordon", "namespaces", "create", "delete", "top", "events",
+            "cluster", "contexts", "use", "current", "forward", "apply"
+        ])
+        if matched_sub:
+            subcmd = matched_sub
 
     rest = words[2:]
-    
     title = f"[bold green]Help: {' '.join(words)} ?[/bold green]"
-    
-    # --- USER command context help ---
+
+    def print_cisco_help(items: list[tuple[str, str]], can_execute: bool = False):
+        table = Table(show_header=False, box=None, padding=(0, 2))
+        for name, desc in items:
+            escaped_name = escape(name)
+            if name.startswith("<") or name.startswith("["):
+                arg_str = f"[yellow]{escaped_name}[/yellow]"
+            elif name == "<cr>":
+                arg_str = f"[cyan]{escaped_name}[/cyan]"
+            else:
+                arg_str = f"[green]{escaped_name}[/green]"
+            table.add_row(arg_str, escape(desc))
+        if can_execute:
+            table.add_row("[cyan]<cr>[/cyan]", "Press Enter to execute the command")
+        console.print(Panel(table, title=title, border_style="cyan", expand=False))
+
+    # --- Builtin Commands ---
+    if resolved in BUILTIN_DESCRIPTIONS:
+        desc = BUILTIN_DESCRIPTIONS[resolved]
+        if resolved in ("alias", "doskey"):
+            print_cisco_help([
+                (resolved, desc),
+                (f"{resolved} [name='command']", "Create a new alias (e.g. ll='ls -l')")
+            ], can_execute=True)
+        elif resolved == "exit":
+            pass
+        else:
+            print_cisco_help([(resolved, desc)], can_execute=True)
+            return
+
+    # --- USER ---
     if resolved == "user":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]add[/green]", "Add a new system user account")
-            table.add_row("[green]remove[/green]", "Delete an existing system user account")
-            table.add_row("[green]delete[/green]", "Delete an existing system user account")
-            table.add_row("[green]passwd[/green]", "Change a user's password")
-            table.add_row("[green]password[/green]", "Change a user's password")
-            table.add_row("[green]join[/green]", "Add a user to a group")
-            table.add_row("[green]list[/green]", "List all local users")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("add", "Add a new system user account"),
+                ("remove", "Delete an existing system user account"),
+                ("delete", "Delete an existing system user account"),
+                ("passwd", "Change a user's password"),
+                ("password", "Change a user's password"),
+                ("join", "Add a user to a group"),
+                ("list", "List all local users"),
+            ], can_execute=False)
             return
             
         if subcmd == "add":
             if not rest:
-                console.print(Panel("[yellow]<username>[/yellow]  Specify the name of the new user", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<username>", "Specify the name of the new user")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow][password][/yellow]  Specify the password for the new user (optional)", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[password]", "Specify the password for the new user (optional)")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd in ("remove", "delete"):
             if not rest:
-                console.print(Panel("[yellow]<username>[/yellow]  Specify the user account to delete", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<username>", "Specify the user account to delete")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd in ("passwd", "password"):
             if not rest:
-                console.print(Panel("[yellow]<username>[/yellow]  Specify the user account to change password", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<username>", "Specify the user account to change password")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow][password][/yellow]  Specify the new password (optional)", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[password]", "Specify the new password (optional)")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd == "join":
             if not rest:
-                console.print(Panel("[yellow]<group>[/yellow]     Specify the group name", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<group>", "Specify the group name")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow]<username>[/yellow]  Specify the user to add to the group", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<username>", "Specify the user to add to the group")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd == "list":
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
             return
 
-    # --- GROUP command context help ---
+    # --- GROUP ---
     if resolved == "group":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]add[/green]", "Add a new system group")
-            table.add_row("[green]remove[/green]", "Delete an existing system group")
-            table.add_row("[green]delete[/green]", "Delete an existing system group")
-            table.add_row("[green]list[/green]", "List all local groups")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("add", "Add a new system group"),
+                ("remove", "Delete an existing system group"),
+                ("delete", "Delete an existing system group"),
+                ("list", "List all local groups"),
+            ], False)
             return
             
         if subcmd == "add":
             if not rest:
-                console.print(Panel("[yellow]<groupname>[/yellow]  Specify the name of the new group", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<groupname>", "Specify the name of the new group")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd in ("remove", "delete"):
             if not rest:
-                console.print(Panel("[yellow]<groupname>[/yellow]  Specify the group to delete", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<groupname>", "Specify the group to delete")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd == "list":
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
             return
 
-    # --- PERMISSION / PERMISSIONS command context help ---
+    # --- PERMISSION / PERMISSIONS ---
     if resolved in ("permission", "permissions"):
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]set[/green]", "Set read/write/execute permissions (chmod)")
-            table.add_row("[green]owner[/green]", "Change owner of file or folder (chown)")
-            table.add_row("[green]group[/green]", "Change group of file or folder (chgrp)")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("set", "Set read/write/execute permissions (chmod)"),
+                ("owner", "Change owner of file or folder (chown)"),
+                ("group", "Change group of file or folder (chgrp)"),
+            ], False)
             return
             
         if subcmd == "set":
             if not rest:
-                console.print(Panel("[yellow]<permissions>[/yellow]  Specify octal (e.g. 755, 644) or symbolic (e.g. +x, g+w) permissions", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<permissions>", "Specify octal (e.g. 755, 644) or symbolic (e.g. +x, g+w) permissions")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow]<path>[/yellow]         Specify the file or folder path", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the file or folder path")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd == "owner":
             if not rest:
-                console.print(Panel("[yellow]<owner>[/yellow]  Specify the username to assign as owner", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<owner>", "Specify the username to assign as owner")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow]<path>[/yellow]   Specify the file or folder path", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the file or folder path")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
             
         if subcmd == "group":
             if not rest:
-                console.print(Panel("[yellow]<group>[/yellow]  Specify the group to assign", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<group>", "Specify the group to assign")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the file or folder path", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the file or folder path")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
             return
 
-    # --- Fallback / traditional command context help ---
+    # --- Fallback traditional commands ---
     if resolved == "chmod":
         if not subcmd:
-            console.print(Panel("[yellow]<permissions>[/yellow]  Specify octal (e.g. 755, 644) or symbolic (e.g. +x) permissions", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<permissions>", "Specify octal (e.g. 755, 644) or symbolic (e.g. +x) permissions")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow]<path>[/yellow]         Specify the file or folder path", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<path>", "Specify the file or folder path")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
         
     if resolved == "chown":
         if not subcmd:
-            console.print(Panel("[yellow]<owner>[/yellow]  Specify the owner username", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<owner>", "Specify the owner username")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow]<path>[/yellow]   Specify the file or folder path", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<path>", "Specify the file or folder path")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
         
     if resolved == "chgrp":
         if not subcmd:
-            console.print(Panel("[yellow]<group>[/yellow]  Specify the group name", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<group>", "Specify the group name")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow]<path>[/yellow]  Specify the file or folder path", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<path>", "Specify the file or folder path")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
         
     if resolved in ("useradd", "adduser"):
         if not subcmd:
-            console.print(Panel("[yellow]<username>[/yellow]  Specify the name of the new user", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<username>", "Specify the name of the new user")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow][password][/yellow]  Specify the password (optional)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[password]", "Specify the password (optional)")], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
         
     if resolved in ("userdel", "deluser"):
         if not subcmd:
-            console.print(Panel("[yellow]<username>[/yellow]  Specify the user account to delete", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<username>", "Specify the user account to delete")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
         
     if resolved == "passwd":
         if not subcmd:
-            console.print(Panel("[yellow][username][/yellow]  Specify the user account (defaults to current user)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[username]", "Specify the user account (defaults to current user)")], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
         
     if resolved in ("groupadd", "addgroup"):
         if not subcmd:
-            console.print(Panel("[yellow]<groupname>[/yellow]  Specify the name of the new group", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<groupname>", "Specify the name of the new group")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
         
     if resolved in ("groupdel", "delgroup"):
         if not subcmd:
-            console.print(Panel("[yellow]<groupname>[/yellow]  Specify the group to delete", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<groupname>", "Specify the group to delete")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
-        
-    # --- Schedule command context help ---
+
+    if resolved == "usermod":
+        if not subcmd:
+            print_cisco_help([("-aG", "Specify flags (e.g. -aG to append to groups)")], False)
+        elif len(words) == 2:
+            print_cisco_help([("<group>", "Specify the group name")], False)
+        elif len(words) == 3:
+            print_cisco_help([("<username>", "Specify the user to modify")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Schedule ---
     if resolved == "schedule":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]list[/green]", "List all scheduled tasks")
-            table.add_row("[green]add[/green]", "Add a new scheduled task interactively")
-            table.add_row("[green]remove[/green]", "Remove an existing scheduled task")
-            table.add_row("[green]edit[/green]", "Edit the raw scheduled tasks file")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("list", "List all scheduled tasks"),
+                ("add", "Add a new scheduled task interactively"),
+                ("remove", "Remove an existing scheduled task"),
+                ("edit", "Edit the raw scheduled tasks file"),
+            ], True)
             console.print("[dim]Note: You can also pass native crontab or schtasks arguments directly (e.g. 'schedule -u root -l').[/dim]")
         elif subcmd == "add":
             if not rest:
-                console.print(Panel("[yellow]<task_name>[/yellow]  Specify the name of the new task", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<task_name>", "Specify the name of the new task")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow]<command>[/yellow]    Specify the command to run", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<command>", "Specify the command to run")], False)
             elif len(rest) == 2:
-                console.print(Panel("[yellow]<timing>[/yellow]     Specify the frequency (e.g. Hourly, Daily, Reboot, or cron expr)", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<timing>", "Specify the frequency (e.g. Hourly, Daily, Reboot, or cron expr)")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "remove":
             if not rest:
-                console.print(Panel("[yellow]<task_name>[/yellow]  Specify the name of the task to remove", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<task_name>", "Specify the name of the task to remove")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
-    # --- Service control commands ---
+    # --- Service control ---
     if resolved in ("status", "start", "stop", "restart", "logs", "live", "enable", "disable"):
         if not subcmd:
-            console.print(Panel(f"[yellow]<service>[/yellow]  Specify the name of the service to {resolved}", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<service>", f"Specify the name of the service to {resolved}")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
     # --- Power commands ---
     if resolved in ("reboot", "shutdown"):
         if not subcmd:
-            console.print(Panel("[yellow][time][/yellow]  Specify time delay/target (e.g. '10' for 10 minutes, '23:30', or 'now') (optional)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[time]", "Specify time delay/target (e.g. '10', '23:30', or 'now') (optional)")], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
     # --- Simple zero-arg commands ---
-    if resolved in ("cancel", "sysinfo", "processes", "containers", "back", "ip", "update"):
-        console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+    if resolved in ("cancel", "sysinfo", "containers", "back", "ip", "update", "whoami", "pwd", "whereami", "history"):
+        print_cisco_help([], True)
+        return
+
+    # --- Processes / ps ---
+    if resolved in ("processes", "ps"):
+        if not subcmd:
+            print_cisco_help([
+                ("cpu", "List processes sorted by CPU usage"),
+                ("mem", "List processes sorted by memory usage"),
+                ("name", "List processes sorted by name"),
+                ("pid", "List processes sorted by process ID"),
+            ], can_execute=True)
+        else:
+            print_cisco_help([], True)
         return
 
     # --- Path/directory commands ---
     if resolved in ("list", "cd", "open"):
         if not subcmd:
-            console.print(Panel(f"[yellow][path][/yellow]  Specify the target path to {resolved if resolved != 'list' else 'list directory contents'} (optional)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[path]", f"Specify the target path to {resolved if resolved != 'list' else 'list directory contents'} (optional)")], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
     # --- File operations ---
     if resolved in ("copy", "move"):
         if not subcmd:
-            console.print(Panel("[yellow]<source>[/yellow]       Specify the file or folder to copy/move", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<source>", "Specify the file or folder to copy/move")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow]<destination>[/yellow]  Specify the target destination path", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<destination>", "Specify the target destination path")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
     if resolved in ("remove", "mkdir"):
         if not subcmd:
             if resolved == "remove":
-                console.print(Panel("[yellow]shortcut <name>[/yellow]  Remove a CLI shortcut\n[yellow]<path>[/yellow]  Specify the file or folder to remove", title=title, border_style="cyan", expand=False))
+                print_cisco_help([
+                    ("shortcut <name>", "Remove a CLI shortcut"),
+                    ("<path>", "Specify the file or folder to remove"),
+                ], False)
             else:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the folder to create", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the folder to create")], False)
         else:
             if resolved == "remove" and subcmd == "shortcut":
                 if not rest:
-                    console.print(Panel("[yellow]<name>[/yellow]  Specify the shortcut alias name to remove", title=title, border_style="cyan", expand=False))
+                    print_cisco_help([("<name>", "Specify the shortcut alias name to remove")], False)
                 else:
-                    console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                    print_cisco_help([], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         return
 
+    # --- Create ---
     if resolved == "create":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]folder[/green]", "Create a new directory (including parent directories)")
-            table.add_row("[green]file[/green]", "Create a new empty file")
-            table.add_row("[green]shortcut[/green]", "Create a CLI shortcut (alias)")
-            table.add_row("[green]venv[/green]", "Create a new Python virtual environment")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("folder", "Create a new directory (including parent directories)"),
+                ("file", "Create a new empty file"),
+                ("shortcut", "Create a CLI shortcut (alias) interactively"),
+                ("venv", "Create a new Python virtual environment"),
+            ], False)
         elif subcmd == "folder":
             if not rest:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the directory path to create", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the directory path to create")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "file":
             if not rest:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to create", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the file path to create")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "shortcut":
             if not rest:
-                console.print(Panel("Press ENTER to open the interactive shortcut wizard.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<cr>", "Press ENTER to open the interactive shortcut wizard")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "venv":
             if not rest:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the path where the new virtual environment should be created", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the path where the new virtual environment should be created")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        else:
-            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected 'folder', 'file', 'shortcut', or 'venv'.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         return
 
+    # --- Show ---
     if resolved == "show":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]file <path>[/green]", "Show contents of a file (cat)")
-            table.add_row("[green]start <path>[/green]", "Show first N lines of a file (head)")
-            table.add_row("[green]end <path>[/green]", "Show last N lines of a file (tail)")
-            table.add_row("[green]tree [path][/green]", "Show directory structure in a tree (tree)")
-            table.add_row("[green]env [filter][/green]", "View or filter environment variables (env)")
-            table.add_row("[green]history[/green]", "Show the session command history (history)")
-            table.add_row("[green]arp [args][/green]", "View Address Resolution Protocol (ARP) table")
-            table.add_row("[green]mac[/green]", "Display MAC addresses of active network interfaces")
-            table.add_row("[green]gateway[/green]", "Display system default gateway IP address")
-            table.add_row("[green]ip[/green]", "Show IP addresses and network interfaces")
-            table.add_row("[green]route [args][/green]", "View the system network routing table")
-            table.add_row("[green]hostname [new_name][/green]", "View or change the system's host name")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("file <path>", "Show contents of a file (cat)"),
+                ("start <path>", "Show first N lines of a file (head)"),
+                ("end <path>", "Show last N lines of a file (tail)"),
+                ("tree [path]", "Show directory structure in a tree (tree)"),
+                ("env [filter]", "View or filter environment variables (env)"),
+                ("history", "Show the session command history (history)"),
+                ("arp [args]", "View Address Resolution Protocol (ARP) table"),
+                ("mac", "Display MAC addresses of active network interfaces"),
+                ("gateway", "Display system default gateway IP address"),
+                ("ip", "Show IP addresses and network interfaces"),
+                ("route [args]", "View the system network routing table"),
+                ("hostname [new_name]", "View or change the system's host name"),
+                ("shortcut", "Show configured shortcuts and aliases"),
+            ], False)
         elif subcmd == "file":
             if not rest:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to show", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the file path to show")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        elif subcmd == "start":
+                print_cisco_help([], True)
+        elif subcmd in ("start", "end"):
             if not rest:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to show start of", title=title, border_style="cyan", expand=False))
+                print_cisco_help([
+                    ("-n <lines>", "Specify the number of lines to display (default: 10)"),
+                    ("<file_path>", f"Specify the file path to show {subcmd} of"),
+                ], False)
+            elif rest[0].lower() == "-n":
+                if len(rest) == 1:
+                    print_cisco_help([("<lines>", "Specify the number of lines")], False)
+                elif len(rest) == 2:
+                    print_cisco_help([("<file_path>", f"Specify the file path to show {subcmd} of")], False)
+                else:
+                    print_cisco_help([], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        elif subcmd == "end":
-            if not rest:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the file path to show end of", title=title, border_style="cyan", expand=False))
-            else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "tree":
             if not rest:
-                console.print(Panel("[yellow][path][/yellow]  Specify optional directory path", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[path]", "Specify optional directory path")], True)
+            elif len(rest) == 1:
+                print_cisco_help([("[depth]", "Specify optional search depth (integer)")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "env":
             if not rest:
-                console.print(Panel("[yellow][filter][/yellow]  Specify optional filter term", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[filter]", "Specify optional filter term")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        elif subcmd in ("history", "mac", "gateway", "ip"):
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
+        elif subcmd in ("history", "mac", "gateway", "ip", "shortcut"):
+            print_cisco_help([], True)
         elif subcmd == "arp":
             if not rest:
-                console.print(Panel("[yellow][args][/yellow]  Optional arguments for the arp command", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[args]", "Optional arguments for the arp command")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "route":
             if not rest:
-                console.print(Panel("[yellow][args][/yellow]  Optional arguments for the route command", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[args]", "Optional arguments for the route command")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "hostname":
             if not rest:
-                console.print(Panel("[yellow][new_name][/yellow]  Optional new hostname to set", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[new_name]", "Optional new hostname to set")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        else:
-            console.print(Panel(f"Unknown subcommand '{subcmd}'.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         return
 
+    # --- Lookup ---
     if resolved == "lookup":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]all <host_or_ip>[/green]", "Perform consolidated diagnostics (DNS, Ping, HTTP, Traceroute)")
-            table.add_row("[green]A <host>[/green]", "Query DNS A records (IPv4 addresses)")
-            table.add_row("[green]AAAA <host>[/green]", "Query DNS AAAA records (IPv6 addresses)")
-            table.add_row("[green]CNAME <host>[/green]", "Query DNS CNAME records (canonical names)")
-            table.add_row("[green]MX <host>[/green]", "Query DNS MX records (mail exchangers)")
-            table.add_row("[green]TXT <host>[/green]", "Query DNS TXT records (text records)")
-            table.add_row("[green]NS <host>[/green]", "Query DNS NS records (name servers)")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("all", "Perform consolidated diagnostics (DNS, Ping, HTTP, Traceroute)"),
+                ("A", "Query DNS A records (IPv4 addresses)"),
+                ("AAAA", "Query DNS AAAA records (IPv6 addresses)"),
+                ("CNAME", "Query DNS CNAME records (canonical names)"),
+                ("MX", "Query DNS MX records (mail exchangers)"),
+                ("TXT", "Query DNS TXT records (text records)"),
+                ("NS", "Query DNS NS records (name servers)"),
+                ("<host_or_ip>", "Specify the target hostname or IP address directly"),
+            ], False)
         elif subcmd in ("all", "a", "aaaa", "cname", "mx", "txt", "ns"):
             if not rest:
-                console.print(Panel("[yellow]<host_or_ip>[/yellow]  Specify the target hostname or IP address", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<host_or_ip>", "Specify the target hostname or IP address")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         else:
-            console.print(Panel(f"Unknown subcommand '{subcmd}'. Expected all, A, AAAA, CNAME, MX, TXT, or NS.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Find ---
     if resolved == "find":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]file <pattern>[/green]", "Search files by name pattern")
-            table.add_row("[green]text <pattern>[/green]", "Search text pattern inside files")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("file", "Search files by name pattern"),
+                ("text", "Search text pattern inside files"),
+            ], False)
         elif subcmd == "file":
             if not rest:
-                console.print(Panel("[yellow]<pattern>[/yellow]  Specify name pattern to search", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<pattern>", "Specify name pattern to search")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow][path][/yellow]  Specify optional search directory", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[path]", "Specify optional search directory")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "text":
             if not rest:
-                console.print(Panel("[yellow]<pattern>[/yellow]  Specify text pattern to search for", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<pattern>", "Specify text pattern to search for")], False)
             elif len(rest) == 1:
-                console.print(Panel("[yellow][path][/yellow]  Specify optional search directory", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[path]", "Specify optional search directory")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        else:
-            console.print(Panel(f"Unknown subcommand '{subcmd}'.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         return
 
-    # --- SQL / databases ---
+    # --- Sqlite ---
     if resolved == "sqlite":
         if not subcmd:
-            console.print(Panel("[yellow]<database_path>[/yellow]  Specify the path to the SQLite database file", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<database_path>", "Specify the path to the SQLite database file")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow][SQL query][/yellow]      Specify the SQL query to run against the database (optional)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[SQL query]", "Specify the SQL query to run against the database (optional)")], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
-    # --- Configuration ---
+    # --- Config ---
     if resolved == "config":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]set <setting> <value>[/green]", "Change a configuration setting")
-            table.add_row("[green]reset[/green]", "Reset all configurations to defaults")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("set", "Change a configuration setting"),
+                ("reset", "Reset all configurations to defaults"),
+            ], True)
+        elif subcmd == "set":
+            if not rest:
+                print_cisco_help([("<setting>", "Specify the configuration setting name (e.g. theme)")], False)
+            elif len(rest) == 1:
+                print_cisco_help([("<value>", "Specify the new value for the setting")], False)
+            else:
+                print_cisco_help([], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
-    # --- Git commands ---
+    # --- Process / Kill / Pkill ---
+    if resolved == "process":
+        if not subcmd:
+            print_cisco_help([("<pid_or_name>", "Specify the PID or process name to inspect")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    if resolved == "kill":
+        if not subcmd:
+            print_cisco_help([("<PID_or_name>", "Specify the PID or process name to terminate")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    if resolved == "pkill":
+        if not subcmd:
+            print_cisco_help([("<name_pattern>", "Specify process name pattern to terminate")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Network Diagnostics ---
+    if resolved == "ping":
+        if not subcmd:
+            print_cisco_help([("<host_or_ip>", "Specify the remote host or IP address to ping")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    if resolved == "traceroute":
+        if not subcmd:
+            print_cisco_help([("<host_or_ip>", "Specify the remote host or IP address to trace")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    if resolved in ("dns", "nslookup"):
+        if not subcmd:
+            print_cisco_help([("<host>", "Specify the domain name to query")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Netstat ---
+    if resolved == "netstat":
+        if not subcmd:
+            print_cisco_help([("[args...]", "Specify optional netstat options (e.g. -an, -p)")], True)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Which / Where / Findcommand ---
+    if resolved in ("which", "where", "findcommand"):
+        if not subcmd:
+            print_cisco_help([("<command>", "Specify the name of the executable to locate")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- File/Directory Operations ---
+    if resolved == "touch":
+        if not subcmd:
+            print_cisco_help([("<file_path>", "Specify the file path to create or update")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    if resolved in ("cat", "less", "scrollfile"):
+        if not subcmd:
+            print_cisco_help([("<file_path>", "Specify the file path to view")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Head / Tail / Viewstart / Viewend ---
+    if resolved in ("head", "viewstart"):
+        if not subcmd:
+            print_cisco_help([
+                ("-n <lines>", "Specify the number of lines to display (default: 10)"),
+                ("<file_path>", "Specify the file path to view"),
+            ], False)
+        elif subcmd == "-n":
+            if not rest:
+                print_cisco_help([("<lines>", "Specify the number of lines")], False)
+            elif len(rest) == 1:
+                print_cisco_help([("<file_path>", "Specify the file path to view")], False)
+            else:
+                print_cisco_help([], True)
+        else:
+            print_cisco_help([], True)
+        return
+
+    if resolved in ("tail", "viewend"):
+        if not subcmd:
+            print_cisco_help([
+                ("-n <lines>", "Specify the number of lines to display (default: 10)"),
+                ("<file_path>", "Specify the file path to view"),
+            ], False)
+        elif subcmd == "-n":
+            if not rest:
+                print_cisco_help([("<lines>", "Specify the number of lines")], False)
+            elif len(rest) == 1:
+                print_cisco_help([("<file_path>", "Specify the file path to view")], False)
+            else:
+                print_cisco_help([], True)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- SSH / SFTP / SCP ---
+    if resolved == "ssh":
+        if not subcmd:
+            print_cisco_help([("<user@host>", "Specify the remote SSH connection string")], False)
+        else:
+            print_cisco_help([("[args...]", "Specify optional SSH arguments")], True)
+        return
+
+    if resolved == "sftp":
+        if not subcmd:
+            print_cisco_help([("<user@host>", "Specify the remote SFTP connection string")], False)
+        else:
+            print_cisco_help([("[args...]", "Specify optional SFTP arguments")], True)
+        return
+
+    if resolved == "scp":
+        if not subcmd:
+            print_cisco_help([("<source>", "Specify the file/folder to copy")], False)
+        elif len(words) == 2:
+            print_cisco_help([("<destination>", "Specify the remote destination (e.g. user@host:/path)")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Git ---
     if resolved == "git":
         if not subcmd:
-            console.print(Panel("[yellow]<subcommand>[/yellow]  Specify the Git action (e.g. status, log, diff, branch, add, commit, push, pull)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<subcommand>", "Specify the Git action (e.g. status, log, diff, branch, add, commit, push, pull)")], False)
         else:
-            console.print(Panel("Specify optional sub-arguments or options for the Git subcommand.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[args...]", "Specify optional sub-arguments or options for the Git subcommand")], True)
         return
 
     if resolved == "gitsave":
         if not subcmd:
-            console.print(Panel("[yellow]<message>[/yellow]  Specify the commit message for the changes", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<message>", "Specify the commit message for the changes")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
     # --- Package management ---
     if resolved in ("install", "uninstall"):
         if not subcmd:
-            console.print(Panel(f"[yellow]<package>[/yellow]  Specify the package name to {resolved}", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<package>", f"Specify the package name to {resolved}")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
-    # --- Port and Network ---
+    # --- Port ---
     if resolved == "port":
         if not subcmd:
-            console.print(Panel("[yellow]<port_number | program_name>[/yellow]  Specify a port number or program name to lookup", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<port_number | program_name>", "Specify a port number or program name to lookup")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Netconfig ---
     if resolved == "netconfig":
         if not subcmd:
-            console.print(Panel("[yellow]<adapter>[/yellow]  Specify the network interface/adapter to configure, 'dhcp' to release/renew, or 'reset' to clear manual changes", title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("reset", "Reset manual network interface settings"),
+                ("dhcp", "DHCP release/renew commands"),
+                ("<adapter>", "Specify interface adapter to configure"),
+            ], False)
         elif subcmd == "reset":
             if not rest:
-                console.print(Panel("[yellow]<adapter>[/yellow]  Specify the adapter to reset to default DHCP", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<adapter>", "Specify the adapter to reset to default DHCP")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         elif subcmd == "dhcp":
             if not rest:
-                table = Table(show_header=False, box=None, padding=(0, 2))
-                table.add_row("[green]release <adapter>[/green]", "Release DHCP lease for the adapter")
-                table.add_row("[green]renew <adapter>[/green]", "Renew DHCP lease for the adapter")
-                console.print(Panel(table, title=title, border_style="cyan", expand=False))
+                print_cisco_help([
+                    ("release", "Release DHCP lease for the adapter"),
+                    ("renew", "Renew DHCP lease for the adapter"),
+                ], False)
             elif len(rest) == 1 and rest[0].lower() in ("release", "renew"):
-                console.print(Panel("[yellow]<adapter>[/yellow]  Specify the adapter for DHCP operation", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<adapter>", "Specify the adapter for DHCP operation")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
-    # --- Structured universal commands ---
+    # --- Firewall ---
     if resolved == "firewall":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]status[/green]", "Check firewall rules with numbered IDs")
-            table.add_row("[green]allow <port> [proto] [iface] [name][/green]", "Allow incoming traffic on port")
-            table.add_row("[green]block <port> [proto] [iface] [name][/green]", "Block incoming traffic on port")
-            table.add_row("[green]delete <ID_or_port>[/green]", "Delete a specific firewall rule by ID or port")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("status", "Check firewall rules with numbered IDs"),
+                ("allow", "Allow incoming traffic on port"),
+                ("block", "Block incoming traffic on port"),
+                ("delete", "Delete a specific firewall rule by ID or port"),
+            ], False)
         elif subcmd in ("allow", "block"):
             if len(rest) == 0:
-                console.print(Panel("[yellow]<port>[/yellow]  Specify the port number or range (e.g. 80, 22, 8080-8090)", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<port>", "Specify the port number or range (e.g. 80, 22, 8080-8090)")], False)
             elif len(rest) == 1:
-                table = Table(show_header=False, box=None, padding=(0, 2))
-                table.add_row("[green]tcp[/green]", "Transmission Control Protocol (Default)")
-                table.add_row("[green]udp[/green]", "User Datagram Protocol")
-                table.add_row("[green]both[/green]", "Both TCP and UDP protocols")
-                console.print(Panel(table, title=f"{title} — Select Protocol (Optional)", border_style="cyan", expand=False))
+                print_cisco_help([
+                    ("tcp", "Transmission Control Protocol (Default)"),
+                    ("udp", "User Datagram Protocol"),
+                    ("both", "Both TCP and UDP protocols"),
+                ], True)
             elif len(rest) == 2:
-                console.print(Panel("[yellow][adapter][/yellow]  (Optional) Specify target network interface (e.g. all, eth0, wlan0)", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[adapter]", "(Optional) Specify target network interface (e.g. eth0)")], True)
             elif len(rest) == 3:
-                console.print(Panel("[yellow][rule_name][/yellow]  (Optional) Specify custom label for this rule (e.g. Web-Server, SSH-Rule)", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("[rule_name]", "(Optional) Specify custom label for this rule")], True)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
-        elif subcmd in ("delete", "remove") and len(rest) == 0:
-            console.print(Panel("[yellow]<ID_or_port>[/yellow]  Specify the Rule ID number (from firewall status) or port to delete", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
+        elif subcmd in ("delete", "remove"):
+            if len(rest) == 0:
+                print_cisco_help([("<ID_or_port>", "Specify the Rule ID number or port to delete")], False)
+            else:
+                print_cisco_help([], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Disk / Drive ---
     if resolved in ("disk", "drive"):
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]list[/green]", "List physical disks, drives, and volume partitions")
-            table.add_row("[green]usage [path][/green]", "Show disk space usage for path or system")
-            table.add_row("[green]mount <dev> <target>[/green]", "Mount a drive or partition")
-            table.add_row("[green]unmount <target>[/green]", "Unmount a mounted drive volume")
-            table.add_row("[green]check <target>[/green]", "Perform filesystem integrity check (fsck/chkdsk)")
-            table.add_row("[green]health [target][/green]", "Check disk health / SMART status")
-            table.add_row("[green]format <dev> <fs>[/green]", "Format a device with a filesystem (Destructive)")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("list", "List physical disks, drives, and volume partitions"),
+                ("usage", "Show disk space usage for path or system"),
+                ("mount", "Mount a drive or partition"),
+                ("unmount", "Unmount a mounted drive volume"),
+                ("check", "Perform filesystem integrity check (fsck/chkdsk)"),
+                ("health", "Check disk health / SMART status"),
+                ("format", "Format a device with a filesystem (Destructive)"),
+            ], False)
+        elif subcmd == "usage":
+            if not rest:
+                print_cisco_help([("[path]", "Show usage for a specific path (optional)")], True)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "mount":
+            if not rest:
+                print_cisco_help([("<dev>", "Specify device partition to mount")], False)
+            elif len(rest) == 1:
+                print_cisco_help([("<target>", "Specify mount point directory path")], False)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "unmount":
+            if not rest:
+                print_cisco_help([("<target>", "Specify target partition or mount point to unmount")], False)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "check":
+            if not rest:
+                print_cisco_help([("<target>", "Specify partition or mount point to check")], False)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "health":
+            if not rest:
+                print_cisco_help([("[target]", "Specify target disk (e.g. /dev/sda) (optional)")], True)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "format":
+            if not rest:
+                print_cisco_help([("<dev>", "Specify device to format")], False)
+            elif len(rest) == 1:
+                print_cisco_help([("<fs>", "Specify filesystem type (e.g. ext4, ntfs, fat32)")], False)
+            else:
+                print_cisco_help([], True)
         else:
-            console.print(Panel("Specify required device or path arguments.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Archive / Compress ---
     if resolved in ("archive", "compress"):
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]create <out.zip> <path>[/green]", "Compress file/folder into archive")
-            table.add_row("[green]extract <archive> [dest][/green]", "Extract compressed archive into folder")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("create", "Compress file/folder into archive"),
+                ("extract", "Extract compressed archive into folder"),
+            ], False)
+        elif subcmd == "create":
+            if not rest:
+                print_cisco_help([("<out.zip>", "Specify output zip file path")], False)
+            elif len(rest) == 1:
+                print_cisco_help([("<path>", "Specify file or folder path to compress")], False)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "extract":
+            if not rest:
+                print_cisco_help([("<archive>", "Specify archive zip file to extract")], False)
+            elif len(rest) == 1:
+                print_cisco_help([("[dest]", "Specify target destination directory (optional)")], True)
+            else:
+                print_cisco_help([], True)
         else:
-            console.print(Panel("Specify archive path and target directory.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Download ---
     if resolved == "download":
         if not subcmd:
-            console.print(Panel("[yellow]<url>[/yellow]  Specify the download URL (HTTP/HTTPS/FTP)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<url>", "Specify the download URL (HTTP/HTTPS/FTP)")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow][destination][/yellow]  Specify optional destination file path or folder", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[destination]", "Specify optional destination file path or folder")], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Search ---
     if resolved == "search":
         if not subcmd:
-            console.print(Panel("[yellow]<query_text>[/yellow]  Specify text or regex pattern to search for in files", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<query_text>", "Specify text or regex pattern to search for in files")], False)
         elif len(words) == 2:
-            console.print(Panel("[yellow][path][/yellow]  Specify optional directory path to search inside", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[path]", "Specify optional directory path to search inside")], True)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Killport ---
     if resolved == "killport":
         if not subcmd:
-            console.print(Panel("[yellow]<port_number>[/yellow]  Specify port number to terminate associated process", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<port_number>", "Specify port number to terminate associated process")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
+    # --- Enter ---
     if resolved == "enter":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]venv <path>[/green]", "Enter (activate) a Python virtual environment")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([("venv", "Enter (activate) a Python virtual environment")], False)
         elif subcmd == "venv":
             if not rest:
-                console.print(Panel("[yellow]<path>[/yellow]  Specify the path of the virtual environment to enter/activate", title=title, border_style="cyan", expand=False))
+                print_cisco_help([("<path>", "Specify the path of the virtual environment to enter/activate")], False)
             else:
-                console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+                print_cisco_help([], True)
         return
 
-    # --- crontab context help ---
+    # --- Crontab ---
     if resolved == "crontab":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]-l[/green]", "List your scheduled cron jobs")
-            table.add_row("[green]-e[/green]", "Edit your cron jobs interactively")
-            table.add_row("[green]-r[/green]", "Remove all of your cron jobs")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("-l", "List your scheduled cron jobs"),
+                ("-e", "Edit your cron jobs interactively"),
+                ("-r", "Remove all of your cron jobs"),
+            ], False)
+        else:
+            print_cisco_help([], True)
         return
 
-    # --- schtasks context help ---
+    # --- Schtasks ---
     if resolved == "schtasks":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]/query[/green]", "List all scheduled tasks")
-            table.add_row("[green]/create[/green]", "Create a new scheduled task")
-            table.add_row("[green]/delete[/green]", "Delete an existing scheduled task")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([
+                ("/query", "List all scheduled tasks"),
+                ("/create", "Create a new scheduled task"),
+                ("/delete", "Delete an existing scheduled task"),
+            ], False)
+        else:
+            print_cisco_help([], True)
         return
 
+    # --- Exit ---
     if resolved == "exit":
         if not subcmd:
-            table = Table(show_header=False, box=None, padding=(0, 2))
-            table.add_row("[green]venv[/green]", "Exit (deactivate) the current Python virtual environment")
-            console.print(Panel(table, title=title, border_style="cyan", expand=False))
+            print_cisco_help([("venv", "Exit (deactivate) the current Python virtual environment")], True)
         elif subcmd == "venv":
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
-    # ─── Kubernetes (k8s / kubernetes) context help ─────────────────────
+    # --- Sessions ---
+    if resolved == "sessions":
+        if not subcmd:
+            print_cisco_help([
+                ("list", "List all active logon and multiplexer sessions"),
+                ("kill", "Terminate/disconnect an active session"),
+            ], True)
+        elif subcmd == "list":
+            print_cisco_help([], True)
+        elif subcmd == "kill":
+            if not rest:
+                print_cisco_help([("<session_id/tty>", "Specify the active session ID or TTY to terminate")], False)
+            else:
+                print_cisco_help([], True)
+        return
+
+    # --- W, Who, Quser, Qwinsta ---
+    if resolved in ("w", "who", "quser", "qwinsta"):
+        if not subcmd:
+            print_cisco_help([("[username]", "Filter active sessions by username (optional)")], True)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Query ---
+    if resolved == "query":
+        if not subcmd:
+            print_cisco_help([
+                ("user", "Query logged on users"),
+                ("session", "Query logon sessions"),
+            ], False)
+        elif subcmd == "user":
+            if not rest:
+                print_cisco_help([("[username]", "Query a specific logged on user (optional)")], True)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "session":
+            if not rest:
+                print_cisco_help([("[session_name/id]", "Query a specific logon session (optional)")], True)
+            else:
+                print_cisco_help([], True)
+        return
+
+    # --- Logoff ---
+    if resolved == "logoff":
+        if not subcmd:
+            print_cisco_help([("<session_id/tty/name>", "Specify the active session ID, TTY, or username to log off")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    # --- Loginctl ---
+    if resolved == "loginctl":
+        if not subcmd:
+            print_cisco_help([
+                ("list-sessions", "List all active sessions"),
+                ("terminate-session", "Terminate a session"),
+                ("kill-session", "Send a signal to processes of a session"),
+            ], True)
+        elif subcmd == "list-sessions":
+            print_cisco_help([], True)
+        elif subcmd in ("terminate-session", "kill-session"):
+            if not rest:
+                print_cisco_help([("<session_id>", "Specify the active session ID to terminate/kill")], False)
+            else:
+                print_cisco_help([], True)
+        return
+
+    # --- Kubernetes / k8s ---
     if resolved in ("k8s", "kubernetes"):
         if not subcmd:
             table = Table(show_header=False, box=None, padding=(0, 2))
-            # ─ Pods
+            # Pods
             table.add_row("[bold magenta]# Pods[/bold magenta]", "")
             table.add_row("[green]pods[/green]",             "List pods in the current namespace")
             table.add_row("[green]pods all[/green]",         "List pods across ALL namespaces")
@@ -983,7 +1280,7 @@ def show_context_help(words: list[str], commands: dict):
             table.add_row("[green]follow <pod>[/green]",     "Follow (tail -f) live pod logs")
             table.add_row("[green]exec <pod>[/green]",       "Open /bin/bash shell inside pod")
             table.add_row("[green]sh <pod>[/green]",         "Open /bin/sh shell inside pod")
-            # ─ Deployments
+            # Deployments
             table.add_row("[bold magenta]# Deployments[/bold magenta]", "")
             table.add_row("[green]deployments[/green]",                       "List all deployments")
             table.add_row("[green]deployment info <name>[/green]",            "Describe a deployment")
@@ -992,39 +1289,39 @@ def show_context_help(words: list[str], commands: dict):
             table.add_row("[green]rollout status <deploy>[/green]",            "Check rollout progress")
             table.add_row("[green]rollout history <deploy>[/green]",           "View rollout revision history")
             table.add_row("[green]rollout undo <deploy>[/green]",              "Roll back to previous revision")
-            # ─ Services
+            # Services
             table.add_row("[bold magenta]# Services[/bold magenta]", "")
             table.add_row("[green]services[/green]",             "List all services")
             table.add_row("[green]service info <name>[/green]",   "Describe a service")
-            # ─ Nodes
+            # Nodes
             table.add_row("[bold magenta]# Nodes[/bold magenta]", "")
             table.add_row("[green]nodes[/green]",               "List cluster nodes")
             table.add_row("[green]node info <name>[/green]",     "Describe a specific node")
             table.add_row("[green]drain <node>[/green]",         "Safely drain a node for maintenance")
             table.add_row("[green]cordon <node>[/green]",        "Mark node as unschedulable")
             table.add_row("[green]uncordon <node>[/green]",      "Mark node as schedulable")
-            # ─ Namespaces
+            # Namespaces
             table.add_row("[bold magenta]# Namespaces[/bold magenta]", "")
             table.add_row("[green]namespaces[/green]",                    "List all namespaces")
             table.add_row("[green]create namespace <name>[/green]",       "Create a new namespace")
             table.add_row("[green]delete namespace <name>[/green]",       "Delete a namespace")
-            # ─ Apply / Delete
+            # Apply / Delete
             table.add_row("[bold magenta]# Manifests[/bold magenta]", "")
             table.add_row("[green]apply <file.yaml>[/green]",   "Apply a Kubernetes manifest")
             table.add_row("[green]delete <file.yaml>[/green]",  "Delete resources from a manifest")
             table.add_row("[green]delete pod <name>[/green]",   "Force-delete a specific pod")
-            # ─ Monitoring
+            # Monitoring
             table.add_row("[bold magenta]# Monitoring[/bold magenta]", "")
             table.add_row("[green]top pods[/green]",     "Show pod CPU/Memory usage")
             table.add_row("[green]top nodes[/green]",    "Show node CPU/Memory usage")
             table.add_row("[green]events[/green]",       "Show recent cluster events")
             table.add_row("[green]cluster info[/green]", "Display cluster API endpoint")
-            # ─ Context
+            # Context
             table.add_row("[bold magenta]# Context / Config[/bold magenta]", "")
             table.add_row("[green]contexts[/green]",                  "List all kubectl contexts")
             table.add_row("[green]use context <name>[/green]",         "Switch active cluster context")
             table.add_row("[green]current context[/green]",            "Show current active context")
-            # ─ Port Forward
+            # Port Forward
             table.add_row("[bold magenta]# Port Forwarding[/bold magenta]", "")
             table.add_row("[green]forward <pod> <local>:<remote>[/green]", "Forward local port to pod port")
             console.print(Panel(
@@ -1034,29 +1331,29 @@ def show_context_help(words: list[str], commands: dict):
                 border_style="cyan", expand=False
             ))
             return
-        # Provide next-step hints for each specific subcommand
+            
         pod_verbs = ("logs", "follow", "tail", "exec", "sh")
         deploy_verbs = ("restart", "scale")
         node_verbs = ("drain", "cordon", "uncordon")
         if subcmd in pod_verbs:
-            console.print(Panel(f"[yellow]<pod>[/yellow]  Specify the pod name to {subcmd}", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<pod>", f"Specify the pod name to {subcmd}")], False)
         elif subcmd in deploy_verbs:
-            console.print(Panel(f"[yellow]<deployment>[/yellow]  Specify the deployment name to {subcmd}", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<deployment>", f"Specify the deployment name to {subcmd}")], False)
         elif subcmd in node_verbs:
-            console.print(Panel(f"[yellow]<node>[/yellow]  Specify the node name to {subcmd}", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<node>", f"Specify the node name to {subcmd}")], False)
         elif subcmd in ("apply", "delete"):
-            console.print(Panel("[yellow]<file.yaml>[/yellow]  Specify the manifest file path or URL", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<file.yaml>", "Specify the manifest file path or URL")], False)
         elif subcmd in ("scale",):
-            console.print(Panel("[yellow]<deployment> <N>[/yellow]  Specify deployment name and desired replica count", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<deployment> <N>", "Specify deployment name and desired replica count")], False)
         elif subcmd in ("forward", "portforward"):
-            console.print(Panel("[yellow]<pod> <local>:<remote>[/yellow]  Specify pod name and port mapping (e.g. 8080:8080)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<pod> <local>:<remote>", "Specify pod name and port mapping (e.g. 8080:8080)")], False)
         elif subcmd == "get":
-            console.print(Panel("[yellow]<resource>[/yellow]  Specify resource type (pods, deployments, services, nodes, ...)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<resource>", "Specify resource type (pods, deployments, services, nodes, ...)")], False)
         else:
-            console.print(Panel("No further arguments expected.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([], True)
         return
 
-    # ─── Raw kubectl context help ───────────────────────────────
+    # --- Kubectl ---
     if resolved == "kubectl":
         if not subcmd:
             table = Table(show_header=False, box=None, padding=(0, 2))
@@ -1105,30 +1402,48 @@ def show_context_help(words: list[str], commands: dict):
             return
         # Hint for next arg
         if subcmd in ("get", "describe", "delete", "edit"):
-            console.print(Panel("[yellow]<resource>[/yellow]  Specify resource type: pods, deployments, services, nodes, namespaces ...", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<resource>", "Specify resource type: pods, deployments, services, nodes, namespaces ...")], False)
         elif subcmd == "logs":
-            console.print(Panel("[yellow]<pod_name>[/yellow]  Specify the pod name (add '-f' for live follow, '-c <container>' for specific container)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<pod_name>", "Specify the pod name (add '-f' for live follow, '-c <container>' for specific container)")], True)
         elif subcmd == "exec":
-            console.print(Panel("[yellow]-it <pod> -- <cmd>[/yellow]  e.g. kubectl exec -it mypod -- bash", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("-it <pod> -- <cmd>", "e.g. kubectl exec -it mypod -- bash")], False)
         elif subcmd in ("apply", "create", "replace"):
-            console.print(Panel("[yellow]-f <file.yaml>[/yellow]  Specify the manifest file or directory path", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("-f <file.yaml>", "Specify the manifest file or directory path")], False)
         elif subcmd == "scale":
-            console.print(Panel("[yellow]deployment/<name> --replicas=N[/yellow]  Specify deployment name and desired replica count", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("deployment/<name> --replicas=N", "Specify deployment name and desired replica count")], False)
         elif subcmd == "rollout":
-            console.print(Panel("[yellow]status|history|undo|restart deployment/<name>[/yellow]  Specify rollout action and deployment name", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("status|history|undo|restart deployment/<name>", "Specify rollout action and deployment name")], False)
         elif subcmd == "port-forward":
-            console.print(Panel("[yellow]pod/<pod_name> <local>:<remote>[/yellow]  Specify pod and port mapping (e.g. 8080:8080)", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("pod/<pod_name> <local>:<remote>", "Specify pod and port mapping (e.g. 8080:8080)")], False)
         elif subcmd == "config":
-            console.print(Panel("[yellow]get-contexts | use-context <name> | current-context | view[/yellow]", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("get-contexts | use-context <name> | current-context | view", "Specify config action")], False)
         elif subcmd == "top":
-            console.print(Panel("[yellow]pods | nodes[/yellow]  Specify the resource type to show metrics for", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("pods | nodes", "Specify the resource type to show metrics for")], False)
         elif subcmd in ("drain", "cordon", "uncordon"):
-            console.print(Panel("[yellow]<node_name>[/yellow]  Specify the node to perform the operation on", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("<node_name>", "Specify the node to perform the operation on")], False)
         else:
-            console.print(Panel("Specify sub-arguments or options for the kubectl subcommand.", title=title, border_style="cyan", expand=False))
+            print_cisco_help([("[args...]", "Specify sub-arguments or options for the kubectl subcommand")], True)
         return
 
-    show_command_help(resolved, commands)
+    # --- General Fallback ---
+    if resolved in commands:
+        cmd = commands[resolved]
+        desc = cmd.desc
+        sudo_req = cmd.needs_sudo
+        
+        if cmd.needs_arg:
+            kind = cmd.arg_completion_kind or "args"
+            print_cisco_help([
+                (f"<{kind}>", desc)
+            ], can_execute=False)
+        else:
+            print_cisco_help([
+                (resolved, desc)
+            ], can_execute=True)
+            
+        if sudo_req:
+            console.print("[bold red]Note:[/bold red]        Requires root/sudo privileges.")
+        return
 
 
 def execute_line(
@@ -1154,7 +1469,7 @@ def execute_line(
             aliases_to_hide = {
                 "permissions", "drive", "compress", "ps", "where", "findcommand",
                 "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-                "scrollfile", "findfile", "findtext", "whereami"
+                "scrollfile", "findfile", "findtext"
             }
             for name in sorted(all_names):
                 if name in aliases_to_hide:

@@ -462,8 +462,8 @@ def delete_rule_by_id(target_id: int) -> bool:
         res = subprocess.run(cmd, capture_output=True, text=True)
         return res.returncode == 0
     elif rule_type == "win":
-        cmd = ["powershell", "-NoProfile", "-Command", "Remove-NetFirewallRule -DisplayName $args[0]"]
-        res = subprocess.run(cmd + [raw], capture_output=True, text=True)
+        cmd = ["powershell", "-NoProfile", "-Command", "& { Remove-NetFirewallRule -DisplayName $args[0] }", raw]
+        res = subprocess.run(cmd, capture_output=True, text=True)
         return res.returncode == 0
 
     return False
@@ -486,16 +486,17 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
 
     if IS_WINDOWS:
         if action in ("delete", "remove"):
-            cmd1 = ["powershell", "-NoProfile", "-Command", "Remove-NetFirewallRule -DisplayName $args[0] -ErrorAction SilentlyContinue"]
-            cmd2 = ["powershell", "-NoProfile", "-Command", "Remove-NetFirewallRule -LocalPort $args[0] -ErrorAction SilentlyContinue"]
-            res1 = subprocess.run(cmd1 + [disp_name], capture_output=True, text=True)
-            res2 = subprocess.run(cmd2 + [port], capture_output=True, text=True)
+            cmd1 = ["powershell", "-NoProfile", "-Command", "& { Remove-NetFirewallRule -DisplayName $args[0] -ErrorAction SilentlyContinue }", disp_name]
+            cmd2 = ["powershell", "-NoProfile", "-Command", "& { Remove-NetFirewallRule -LocalPort $args[0] -ErrorAction SilentlyContinue }", port]
+            res1 = subprocess.run(cmd1, capture_output=True, text=True)
+            res2 = subprocess.run(cmd2, capture_output=True, text=True)
             return res1.returncode == 0 and res2.returncode == 0
         else:
             act = "Allow" if action == "allow" else "Block"
             cmd = ["powershell", "-NoProfile", "-Command", 
-                   "New-NetFirewallRule -DisplayName $args[0] -Direction Inbound -LocalPort $args[1] -Protocol $args[2] -Action $args[3]"]
-            res = subprocess.run(cmd + [disp_name, port, proto.upper(), act], capture_output=True, text=True)
+                   "& { New-NetFirewallRule -DisplayName $args[0] -Direction Inbound -LocalPort $args[1] -Protocol $args[2] -Action $args[3] }",
+                   disp_name, port, proto.upper(), act]
+            res = subprocess.run(cmd, capture_output=True, text=True)
             return res.returncode == 0
     elif IS_MACOS:
         if action in ("delete", "remove"):

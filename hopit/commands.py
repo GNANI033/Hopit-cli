@@ -1113,6 +1113,63 @@ def build_commands(manager: str | None, names: dict) -> dict:
             desc="Print the current working directory path (whereami)",
             needs_arg=False,
         ),
+        "whoami": Command(
+            run=lambda _: ["whoami"],
+            desc="Print the current active user name",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "sessions": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions"] + (shlex.split(arg) if arg else []),
+            desc="Manage active user and terminal multiplexer sessions: sessions [list|kill <id/tty>]",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "w": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions", "list"] + (shlex.split(arg) if arg else []),
+            desc="List active logon and terminal multiplexer sessions",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "who": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions", "list"] + (shlex.split(arg) if arg else []),
+            desc="List active logon and terminal multiplexer sessions",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "quser": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions", "list"] + (shlex.split(arg) if arg else []),
+            desc="List active logon and terminal multiplexer sessions",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "qwinsta": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions", "list"] + (shlex.split(arg) if arg else []),
+            desc="List active logon and terminal multiplexer sessions",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "query": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions", "list"] + (shlex.split(arg) if arg else []),
+            desc="Query active logon and multiplexer sessions: query [user|session]",
+            needs_arg=False,
+            mode="capture",
+        ),
+        "logoff": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions", "kill"] + (shlex.split(arg) if arg else []),
+            desc="Terminate/disconnect an active session: logoff <session_id/tty/name>",
+            needs_arg=True,
+            mode="capture",
+        ),
+        "loginctl": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.sessions"] + (
+                ["kill", shlex.split(arg)[1]] if arg and len(shlex.split(arg)) >= 2 and shlex.split(arg)[0] in ("terminate-session", "kill-session")
+                else (["list"] if arg and shlex.split(arg)[0] == "list-sessions" else ["list"])
+            ),
+            desc="Control and inspect the systemd login manager: loginctl [list-sessions|terminate-session <id>]",
+            needs_arg=False,
+            mode="capture",
+        ),
         "history": Command(
             run=lambda _: [],
             desc="Show the session command history",

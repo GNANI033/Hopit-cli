@@ -1,0 +1,312 @@
+=== HELP FOR: show ? ===
+╭──────────────────────────────── Help: show ? ────────────────────────────────╮
+│   file <path>            Show contents of a file (cat)                       │
+│   start <path>           Show first N lines of a file (head)                 │
+│   end <path>             Show last N lines of a file (tail)                  │
+│   tree [path]            Show directory structure in a tree (tree)           │
+│   env [filter]           View or filter environment variables (env)          │
+│   history                Show the session command history (history)          │
+│   arp [args]             View Address Resolution Protocol (ARP) table        │
+│   mac                    Display MAC addresses of active network             │
+│                          interfaces                                          │
+│   gateway                Display system default gateway IP address           │
+│   ip                     Show IP addresses and network interfaces            │
+│   route [args]           View the system network routing table               │
+│   hostname [new_name]    View or change the system's host name               │
+│   shortcut               Show configured shortcuts and aliases               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: show file ? ===
+╭───────────── Help: show file ? ─────────────╮
+│   <path>    Specify the file path to show   │
+╰─────────────────────────────────────────────╯
+
+
+=== HELP FOR: show env ? ===
+╭───────────────── Help: show env ? ─────────────────╮
+│   [filter]    Specify optional filter term         │
+│   <cr>        Press Enter to execute the command   │
+╰────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: processes ? ===
+╭──────────────── Help: processes ? ────────────────╮
+│   cpu     List processes sorted by CPU usage      │
+│   mem     List processes sorted by memory usage   │
+│   name    List processes sorted by name           │
+│   pid     List processes sorted by process ID     │
+│   <cr>    Press Enter to execute the command      │
+╰───────────────────────────────────────────────────╯
+
+
+=== HELP FOR: ps ? ===
+╭─────────────────── Help: ps ? ────────────────────╮
+│   cpu     List processes sorted by CPU usage      │
+│   mem     List processes sorted by memory usage   │
+│   name    List processes sorted by name           │
+│   pid     List processes sorted by process ID     │
+│   <cr>    Press Enter to execute the command      │
+╰───────────────────────────────────────────────────╯
+
+
+=== HELP FOR: kill ? ===
+╭────────────────────────── Help: kill ? ───────────────────────────╮
+│   <PID_or_name>    Specify the PID or process name to terminate   │
+╰───────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: pkill ? ===
+╭───────────────────────── Help: pkill ? ─────────────────────────╮
+│   <name_pattern>    Specify process name pattern to terminate   │
+╰─────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: ping ? ===
+╭────────────────────────── Help: ping ? ───────────────────────────╮
+│   <host_or_ip>    Specify the remote host or IP address to ping   │
+╰───────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: dns ? ===
+╭───────────────── Help: dns ? ──────────────────╮
+│   <host>    Specify the domain name to query   │
+╰────────────────────────────────────────────────╯
+
+
+=== HELP FOR: netconfig ? ===
+╭─────────────────── Help: netconfig ? ────────────────────╮
+│   reset        Reset manual network interface settings   │
+│   dhcp         DHCP release/renew commands               │
+│   <adapter>    Specify interface adapter to configure    │
+╰──────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: netconfig dhcp ? ===
+╭───────────── Help: netconfig dhcp ? ──────────────╮
+│   release    Release DHCP lease for the adapter   │
+│   renew      Renew DHCP lease for the adapter     │
+╰───────────────────────────────────────────────────╯
+
+
+=== HELP FOR: netconfig dhcp release ? ===
+╭──────────── Help: netconfig dhcp release ? ─────────────╮
+│   <adapter>    Specify the adapter for DHCP operation   │
+╰─────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: firewall ? ===
+╭───────────────────── Help: firewall ? ──────────────────────╮
+│   status    Check firewall rules with numbered IDs          │
+│   allow     Allow incoming traffic on port                  │
+│   block     Block incoming traffic on port                  │
+│   delete    Delete a specific firewall rule by ID or port   │
+╰─────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: firewall allow ? ===
+╭──────────────────────── Help: firewall allow ? ─────────────────────────╮
+│   <port>    Specify the port number or range (e.g. 80, 22, 8080-8090)   │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: firewall allow 80 ? ===
+╭───────────── Help: firewall allow 80 ? ─────────────╮
+│   tcp     Transmission Control Protocol (Default)   │
+│   udp     User Datagram Protocol                    │
+│   both    Both TCP and UDP protocols                │
+│   <cr>    Press Enter to execute the command        │
+╰─────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: firewall allow 80 tcp ? ===
+╭───────────────────── Help: firewall allow 80 tcp ? ──────────────────────╮
+│   [adapter]    (Optional) Specify target network interface (e.g. eth0)   │
+│   <cr>         Press Enter to execute the command                        │
+╰──────────────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: disk ? ===
+╭────────────────────────── Help: disk ? ───────────────────────────╮
+│   list       List physical disks, drives, and volume partitions   │
+│   usage      Show disk space usage for path or system             │
+│   mount      Mount a drive or partition                           │
+│   unmount    Unmount a mounted drive volume                       │
+│   check      Perform filesystem integrity check (fsck/chkdsk)     │
+│   health     Check disk health / SMART status                     │
+│   format     Format a device with a filesystem (Destructive)      │
+╰───────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: disk usage ? ===
+╭────────────────── Help: disk usage ? ───────────────────╮
+│   [path]    Show usage for a specific path (optional)   │
+│   <cr>      Press Enter to execute the command          │
+╰─────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: disk mount ? ===
+╭────────────── Help: disk mount ? ──────────────╮
+│   <dev>    Specify device partition to mount   │
+╰────────────────────────────────────────────────╯
+
+
+=== HELP FOR: disk mount dev ? ===
+╭────────────── Help: disk mount dev ? ──────────────╮
+│   <target>    Specify mount point directory path   │
+╰────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: archive ? ===
+╭─────────────────── Help: archive ? ───────────────────╮
+│   create     Compress file/folder into archive        │
+│   extract    Extract compressed archive into folder   │
+╰───────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: archive create ? ===
+╭─────────── Help: archive create ? ────────────╮
+│   <out.zip>    Specify output zip file path   │
+╰───────────────────────────────────────────────╯
+
+
+=== HELP FOR: archive create out.zip ? ===
+╭─────────── Help: archive create out.zip ? ────────────╮
+│   <path>    Specify file or folder path to compress   │
+╰───────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: sessions ? ===
+╭───────────────────── Help: sessions ? ─────────────────────╮
+│   list    List all active logon and multiplexer sessions   │
+│   kill    Terminate/disconnect an active session           │
+│   <cr>    Press Enter to execute the command               │
+╰────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: sessions kill ? ===
+╭────────────────────────── Help: sessions kill ? ──────────────────────────╮
+│   <session_id/tty>    Specify the active session ID or TTY to terminate   │
+╰───────────────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: k8s ? ===
+╭─────────────── ⎈ k8s — Simple-English Kubernetes Commands ────────────────╮
+│   # Pods                                                                  │
+│   pods                              List pods in the current namespace    │
+│   pods all                          List pods across ALL namespaces       │
+│   pod info <name>                   Detailed pod description              │
+│   logs <pod>                        Show pod logs (last 100 lines)        │
+│   follow <pod>                      Follow (tail -f) live pod logs        │
+│   exec <pod>                        Open /bin/bash shell inside pod       │
+│   sh <pod>                          Open /bin/sh shell inside pod         │
+│   # Deployments                                                           │
+│   deployments                       List all deployments                  │
+│   deployment info <name>            Describe a deployment                 │
+│   scale <deploy> <N>                Scale deployment to N replicas        │
+│   restart <deploy>                  Rolling restart of a deployment       │
+│   rollout status <deploy>           Check rollout progress                │
+│   rollout history <deploy>          View rollout revision history         │
+│   rollout undo <deploy>             Roll back to previous revision        │
+│   # Services                                                              │
+│   services                          List all services                     │
+│   service info <name>               Describe a service                    │
+│   # Nodes                                                                 │
+│   nodes                             List cluster nodes                    │
+│   node info <name>                  Describe a specific node              │
+│   drain <node>                      Safely drain a node for maintenance   │
+│   cordon <node>                     Mark node as unschedulable            │
+│   uncordon <node>                   Mark node as schedulable              │
+│   # Namespaces                                                            │
+│   namespaces                        List all namespaces                   │
+│   create namespace <name>           Create a new namespace                │
+│   delete namespace <name>           Delete a namespace                    │
+│   # Manifests                                                             │
+│   apply <file.yaml>                 Apply a Kubernetes manifest           │
+│   delete <file.yaml>                Delete resources from a manifest      │
+│   delete pod <name>                 Force-delete a specific pod           │
+│   # Monitoring                                                            │
+│   top pods                          Show pod CPU/Memory usage             │
+│   top nodes                         Show node CPU/Memory usage            │
+│   events                            Show recent cluster events            │
+│   cluster info                      Display cluster API endpoint          │
+│   # Context / Config                                                      │
+│   contexts                          List all kubectl contexts             │
+│   use context <name>                Switch active cluster context         │
+│   current context                   Show current active context           │
+│   # Port Forwarding                                                       │
+│   forward <pod> <local>:<remote>    Forward local port to pod port        │
+╰──── Also accepts: kubernetes <verb>  |  Use kubectl for raw commands ─────╯
+
+
+=== HELP FOR: kubectl ? ===
+╭────────────────── ⎈ kubectl — Raw Kubernetes CLI Commands ───────────────────╮
+│   # Resource Queries                                                         │
+│   get <resource>                        List resources (pods, deployments,   │
+│                                         services, nodes ...)                 │
+│   get <resource> -n <namespace>         List resources in a specific         │
+│                                         namespace                            │
+│   get <resource> --all-namespaces       List resources across all            │
+│                                         namespaces                           │
+│   describe <resource> <name>            Detailed resource description        │
+│   # Pod Management                                                           │
+│   logs <pod>                            Show pod logs                        │
+│   logs -f <pod>                         Follow (tail) pod logs live          │
+│   logs <pod> -c <container>             Logs from a specific container in    │
+│                                         a pod                                │
+│   exec -it <pod> -- bash                Open interactive shell inside a      │
+│                                         pod                                  │
+│   delete pod <name>                     Force delete a pod                   │
+│   # Deployments                                                              │
+│   scale deployment <name>               Scale a deployment                   │
+│   --replicas=N                                                               │
+│   rollout status deployment/<name>      Check rollout progress               │
+│   rollout undo deployment/<name>        Rollback to previous revision        │
+│   rollout restart deployment/<name>     Rolling restart of all pods          │
+│   # Apply / Delete                                                           │
+│   apply -f <file.yaml>                  Apply a manifest (create or          │
+│                                         update)                              │
+│   delete -f <file.yaml>                 Delete resources from manifest       │
+│   create namespace <name>               Create a new namespace               │
+│   # Port & Monitoring                                                        │
+│   port-forward pod/<pod> 8080:8080      Forward local port to pod            │
+│   top pods                              Show pod CPU/Memory (needs           │
+│                                         metrics-server)                      │
+│   top nodes                             Show node CPU/Memory                 │
+│   get events                            Show cluster events by time          │
+│   --sort-by=.lastTimestamp                                                   │
+│   # Context & Config                                                         │
+│   config get-contexts                   List all kubectl contexts            │
+│   config use-context <name>             Switch to a context                  │
+│   config current-context                Show current context                 │
+│   # Nodes                                                                    │
+│   drain <node> --ignore-daemonsets      Drain node for maintenance           │
+│   cordon <node>                         Mark node as unschedulable           │
+│   uncordon <node>                       Mark node as schedulable             │
+│   # Discovery                                                                │
+│   api-resources                         List all supported API resource      │
+│                                         types                                │
+│   explain <resource>                    Get field documentation for a        │
+│                                         resource                             │
+╰─────────────── Tip: Use 'k8s' for simple-English alternatives ───────────────╯
+
+
+=== HELP FOR: less ? ===
+╭────────────────── Help: less ? ──────────────────╮
+│   <file_path>    Specify the file path to view   │
+╰──────────────────────────────────────────────────╯
+
+
+=== HELP FOR: head ? ===
+╭───────────────────────────── Help: head ? ──────────────────────────────╮
+│   -n <lines>     Specify the number of lines to display (default: 10)   │
+│   <file_path>    Specify the file path to view                          │
+╰─────────────────────────────────────────────────────────────────────────╯
+
+
+=== HELP FOR: head -n ? ===
+╭───────────── Help: head -n ? ──────────────╮
+│   <lines>    Specify the number of lines   │
+╰────────────────────────────────────────────╯
+
+

@@ -134,6 +134,15 @@ class TestUniversalCommands(unittest.TestCase):
             # Test registrations
             self.assertIn("pwd", cmds)
             self.assertIn("whereami", cmds)
+            self.assertIn("whoami", cmds)
+            self.assertIn("sessions", cmds)
+            self.assertIn("w", cmds)
+            self.assertIn("who", cmds)
+            self.assertIn("quser", cmds)
+            self.assertIn("qwinsta", cmds)
+            self.assertIn("query", cmds)
+            self.assertIn("logoff", cmds)
+            self.assertIn("loginctl", cmds)
             self.assertNotIn("showpath", cmds)
             self.assertIn("history", cmds)
             self.assertNotIn("showhistory", cmds)
@@ -170,8 +179,14 @@ class TestUniversalCommands(unittest.TestCase):
             self.assertIn("findtext", cmds)
             self.assertNotIn("searchtext", cmds)
 
-            # Test execution of inline commands (pwd, history, show, find)
+            # Test execution of inline commands (pwd, history, show, find, whoami, sessions)
             success = execute_line("pwd", "/bin/bash", {}, all_names, cmds, None)
+            self.assertTrue(success)
+
+            success = execute_line("whoami", "/bin/bash", {}, all_names, cmds, None)
+            self.assertTrue(success)
+
+            success = execute_line("sessions list", "/bin/bash", {}, all_names, cmds, None)
             self.assertTrue(success)
 
             success = execute_line("history", "/bin/bash", {}, all_names, cmds, None)
@@ -232,7 +247,7 @@ class TestUniversalCommands(unittest.TestCase):
             "ping", "traceroute", "dns", "nslookup", "route", "arp", "netstat",
             "connections", "hostname", "gateway", "mac", "curl", "wget",
             "ssh", "scp", "sftp", "ps", "process", "kill", "pkill", "top",
-            "resources", "lookup"
+            "resources", "lookup", "whoami"
         ]
         for cmd in new_cmds:
             self.assertIn(cmd, cmds, f"{cmd} should be registered in commands dict")
@@ -265,6 +280,39 @@ class TestUniversalCommands(unittest.TestCase):
             # If posix=False, backslashes are preserved
             preserved = _custom_split(test_path, posix=False)[0]
             self.assertEqual(preserved, test_path)
+
+    def test_session_translations(self):
+        from hopit.translation import translate_cross_platform
+        from unittest.mock import patch
+
+        # Test Unix -> Windows
+        with patch("hopit.translation.IS_WINDOWS", True), patch("hopit.translation.IS_MACOS", False):
+            self.assertEqual(translate_cross_platform(["w"]), "query user")
+            self.assertEqual(translate_cross_platform(["w", "gnani"]), 'query user "gnani"')
+            self.assertEqual(translate_cross_platform(["who"]), "query user")
+            self.assertEqual(translate_cross_platform(["loginctl", "list-sessions"]), "query session")
+            self.assertEqual(translate_cross_platform(["loginctl", "terminate-session", "2"]), "logoff 2")
+
+        # Test Windows -> Linux
+        with patch("hopit.translation.IS_WINDOWS", False), patch("hopit.translation.IS_MACOS", False):
+            self.assertEqual(translate_cross_platform(["quser"]), "w")
+            self.assertEqual(translate_cross_platform(["quser", "gnani"]), "w 'gnani'")
+            self.assertEqual(translate_cross_platform(["qwinsta"]), "loginctl list-sessions")
+            self.assertEqual(translate_cross_platform(["query", "user"]), "w")
+            self.assertEqual(translate_cross_platform(["query", "user", "gnani"]), "w 'gnani'")
+            self.assertEqual(translate_cross_platform(["query", "session"]), "loginctl list-sessions")
+            self.assertEqual(translate_cross_platform(["logoff", "2"]), "loginctl terminate-session 2")
+            self.assertEqual(translate_cross_platform(["logoff", "pts/1"]), "pkill -t pts/1")
+
+        # Test Windows -> macOS & Linux -> macOS
+        with patch("hopit.translation.IS_WINDOWS", False), patch("hopit.translation.IS_MACOS", True):
+            self.assertEqual(translate_cross_platform(["qwinsta"]), "w")
+            self.assertEqual(translate_cross_platform(["query", "session"]), "w")
+            self.assertEqual(translate_cross_platform(["logoff", "2"]), "pkill -t 2")
+            self.assertEqual(translate_cross_platform(["logoff", "ttys001"]), "pkill -t ttys001")
+            self.assertEqual(translate_cross_platform(["loginctl", "list-sessions"]), "who")
+            self.assertEqual(translate_cross_platform(["loginctl", "terminate-session", "2"]), "pkill -t 2")
+
     def test_archive_path_traversal(self):
         import tempfile
         import os
@@ -362,6 +410,95 @@ class TestUniversalCommands(unittest.TestCase):
 
         finally:
             shutil.rmtree(temp_dir)
+
+    def test_session_command_autocompletions(self):
+        from hopit.ui import LazyCompleter
+        from hopit.commands import build_commands
+        from prompt_toolkit.document import Document
+
+        names = {
+            "service": lambda: [],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: ["john", "jane"],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+        completer = LazyCompleter(cmds)
+
+        # Test loginctl subcommands
+        doc = Document("loginctl ")
+        completions = list(completer.get_completions(doc, None))
+        completion_texts = [c.text for c in completions]
+        self.assertIn("list-sessions", completion_texts)
+        self.assertIn("terminate-session", completion_texts)
+        self.assertIn("kill-session", completion_texts)
+
+        # Test query subcommands
+        doc = Document("query ")
+        completions = list(completer.get_completions(doc, None))
+        completion_texts = [c.text for c in completions]
+        self.assertIn("user", completion_texts)
+        self.assertIn("session", completion_texts)
+
+        # Test logoff suggests active sessions
+        doc = Document("logoff ")
+        completions = list(completer.get_completions(doc, None))
+        # Since this runs in different OS environments during test, we just check it runs successfully
+        self.assertIsInstance(completions, list)
+
+        # Test sessions subcommands
+        doc = Document("sessions ")
+        completions = list(completer.get_completions(doc, None))
+        completion_texts = [c.text for c in completions]
+        self.assertIn("list", completion_texts)
+        self.assertIn("kill", completion_texts)
+
+    def test_cisco_style_context_help(self):
+        from unittest.mock import patch
+        from hopit.main import show_context_help
+        from hopit.commands import build_commands
+        
+        names = {
+            "service": lambda: [],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+        
+        # Test 'exit ?'
+        with patch("hopit.main.console.print") as mock_print:
+            show_context_help(["exit"], cmds)
+            mock_print.assert_called()
+            panel = mock_print.call_args[0][0]
+            self.assertIn("Help: exit ?", str(panel.title))
+            
+        # Test 'processes ?'
+        with patch("hopit.main.console.print") as mock_print:
+            show_context_help(["processes"], cmds)
+            mock_print.assert_called()
+            panel = mock_print.call_args[0][0]
+            self.assertIn("Help: processes ?", str(panel.title))
+
+        # Test 'config ?'
+        with patch("hopit.main.console.print") as mock_print:
+            show_context_help(["config"], cmds)
+            mock_print.assert_called()
+            panel = mock_print.call_args[0][0]
+            self.assertIn("Help: config ?", str(panel.title))
+            
+        # Test 'lookup ?'
+        with patch("hopit.main.console.print") as mock_print:
+            show_context_help(["lookup"], cmds)
+            mock_print.assert_called()
+            panel = mock_print.call_args[0][0]
+            self.assertIn("Help: lookup ?", str(panel.title))
 
 if __name__ == "__main__":
     unittest.main()

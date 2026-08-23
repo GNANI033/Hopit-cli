@@ -259,5 +259,7 @@ Write-Host ""
 Write-Host "       hopit-cli" -ForegroundColor White
 Write-Host ""
 Write-Host "   (Open a NEW terminal window for PATH to apply)" -ForegroundColor DarkGray
+Write-Host "   NOTE: If you still see old commands/features, please close all" -ForegroundColor Yellow
+Write-Host "   open terminal windows and open a new one to reload PATH." -ForegroundColor Yellow
 Write-Host "  ============================================" -ForegroundColor Green
 Write-Host ""
