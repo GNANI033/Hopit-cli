@@ -729,5 +729,183 @@ class TestUniversalCommands(unittest.TestCase):
                 panel = mock_print.call_args[0][0]
                 self.assertIn("Help: compose ?", str(panel.title))
 
+    def test_help_segregation(self):
+        from unittest.mock import patch
+        from hopit.commands import build_commands
+        from hopit.ui import print_help
+
+        names = {
+            "service": lambda: [],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands("dnf", names)
+
+        # Check is_universal flag is correctly set on key commands
+        self.assertTrue(cmds["list"].is_universal)
+        self.assertTrue(cmds["create"].is_universal)
+        self.assertFalse(cmds["ls"].is_universal)
+        self.assertFalse(cmds["git"].is_universal)
+        self.assertFalse(cmds["install"].is_universal)
+
+        # Test that print_help executes without throwing exceptions
+        with patch("hopit.ui.console.print") as mock_print:
+            print_help(cmds, "dnf")
+            mock_print.assert_called()
+
+    def test_system_logs_commands(self):
+        from hopit.commands import system_logs_cmd, system_live_logs_cmd
+        
+        # Test command building with no service name (general system logs)
+        logs_default = system_logs_cmd("")
+        self.assertTrue(len(logs_default) > 0)
+        
+        logs_sys = system_logs_cmd("system")
+        self.assertTrue(len(logs_sys) > 0)
+        
+        logs_auth = system_logs_cmd("auth")
+        self.assertTrue(len(logs_auth) > 0)
+        
+        # Test live command building
+        live_default = system_live_logs_cmd("")
+        self.assertTrue(len(live_default) > 0)
+        
+        live_sys = system_live_logs_cmd("system")
+        self.assertTrue(len(live_sys) > 0)
+        
+        # Test autocompletions for logs and live
+        from hopit.ui import LazyCompleter
+        from hopit.commands import build_commands
+        from prompt_toolkit.document import Document
+
+        names = {
+            "service": lambda: ["nginx"],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+        completer = LazyCompleter(cmds)
+
+        # Typing "logs " should suggest general categories + services
+        doc = Document("logs ")
+        completions = list(completer.get_completions(doc, None))
+        texts = [c.text for c in completions]
+        from hopit.config import IS_WINDOWS
+        if IS_WINDOWS:
+            self.assertEqual(texts[:4], ["system", "application", "security", "nginx"])
+        else:
+            self.assertEqual(texts[:4], ["system", "auth", "application", "nginx"])
+
+        # Typing "live " should suggest general categories + services
+        doc_live = Document("live ")
+        completions_live = list(completer.get_completions(doc_live, None))
+        texts_live = [c.text for c in completions_live]
+        if IS_WINDOWS:
+            self.assertEqual(texts_live[:4], ["system", "application", "security", "nginx"])
+        else:
+            self.assertEqual(texts_live[:4], ["system", "auth", "application", "nginx"])
+
+        # Test Cisco IOS help "?" support for logs/live
+        from hopit.main import show_context_help
+        from unittest.mock import patch
+        with patch("hopit.ui.console.print") as mock_print:
+            show_context_help("logs ?", cmds)
+            mock_print.assert_called()
+            
+            show_context_help("live ?", cmds)
+            mock_print.assert_called()
+
+            show_context_help("show logs ?", cmds)
+            mock_help_calls = mock_print.call_count
+            self.assertTrue(mock_help_calls > 0)
+
+    def test_log_translations(self):
+        from hopit.translation import translate_cross_platform
+        from unittest.mock import patch
+        
+        # 1. Test translation on Linux host (mocking IS_WINDOWS=False, IS_MACOS=False)
+        with patch("hopit.translation.IS_WINDOWS", False), patch("hopit.translation.IS_MACOS", False):
+            # Windows -> Linux
+            res1 = translate_cross_platform(["Get-WinEvent", "-LogName", "Security"])
+            self.assertEqual(res1, "journalctl _FACILITY=4 _FACILITY=10 -n 50 --no-pager")
+            
+            res2 = translate_cross_platform(["Get-WinEvent", "-LogName", "Application"])
+            self.assertEqual(res2, "journalctl --user -n 50 --no-pager")
+            
+            # Mac -> Linux
+            res3 = translate_cross_platform(["log", "show", "--predicate", "process == 'nginx'"])
+            self.assertEqual(res3, "journalctl -n 50 --no-pager -u nginx")
+            
+            res4 = translate_cross_platform(["log", "stream", "--predicate", "subsystem == 'auth'"])
+            self.assertEqual(res4, "journalctl -f _FACILITY=4 _FACILITY=10")
+
+        # 2. Test translation on macOS host (mocking IS_WINDOWS=False, IS_MACOS=True)
+        with patch("hopit.translation.IS_WINDOWS", False), patch("hopit.translation.IS_MACOS", True):
+            # Windows -> Mac
+            res1 = translate_cross_platform(["Get-WinEvent", "-LogName", "Security"])
+            self.assertEqual(res1, "log show --last 1h --predicate 'subsystem == \"com.apple.Security\" OR process == \"authorizationhost\"'")
+            
+            # Linux -> Mac
+            res2 = translate_cross_platform(["journalctl", "-u", "nginx"])
+            self.assertEqual(res2, "log show --last 1h --predicate '(process == \"nginx\" OR subsystem == \"nginx\")'")
+
+        # 3. Test translation on Windows host (mocking IS_WINDOWS=True)
+        with patch("hopit.translation.IS_WINDOWS", True):
+            # Linux -> Windows
+            res1 = translate_cross_platform(["journalctl", "-n", "20", "-u", "nginx"])
+            self.assertIn("Get-WinEvent", res1)
+            self.assertIn("System", res1)
+            self.assertIn("nginx", res1)
+            self.assertIn("20", res1)
+            
+            # Mac -> Windows
+            res2 = translate_cross_platform(["log", "show", "--predicate", "process == 'nginx'"])
+            self.assertIn("Get-WinEvent", res2)
+            self.assertIn("System", res2)
+            self.assertIn("nginx", res2)
+
+    def test_filtered_help(self):
+        from hopit.ui import print_help
+        from hopit.commands import build_commands
+        from unittest.mock import patch
+
+        names = {
+            "service": lambda: ["nginx"],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+
+        # Call print_help with filter term "log"
+        with patch("hopit.ui.console.print") as mock_print:
+            print_help(cmds, None, "log")
+            mock_print.assert_called()
+            called_strings = [str(call[0][0]) for call in mock_print.call_args_list if call[0]]
+            self.assertTrue(any("Filtering help for" in s for s in called_strings))
+
+        # Call print_help with a non-existent command name to test yellow mismatch warning
+        with patch("hopit.ui.console.print") as mock_print:
+            print_help(cmds, None, "nonexistentcommand12345")
+            called_strings = [str(call[0][0]) for call in mock_print.call_args_list if call[0]]
+            self.assertTrue(any("No commands or subcommands match" in s for s in called_strings))
+
+        # Test Cisco help context for help command
+        from hopit.main import show_context_help
+        with patch("hopit.ui.console.print") as mock_print:
+            show_context_help("help ?", cmds)
+            mock_print.assert_called()
+
 if __name__ == "__main__":
     unittest.main()

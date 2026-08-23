@@ -322,12 +322,210 @@ def translate_win_net_to_unix(args: list[str]) -> str:
     return ' '.join(args)
 
 
+def translate_get_winevent_to_unix(args: list[str]) -> str:
+    log_type = "system"
+    for a in args:
+        lower_a = a.lower()
+        if "security" in lower_a or "auth" in lower_a:
+            log_type = "auth"
+            break
+        elif "application" in lower_a:
+            log_type = "application"
+            break
+        elif "system" in lower_a:
+            log_type = "system"
+            break
+            
+    if IS_MACOS:
+        if log_type == "auth":
+            return "log show --last 1h --predicate 'subsystem == \"com.apple.Security\" OR process == \"authorizationhost\"'"
+        return "log show --last 1h"
+    else:
+        if log_type == "auth":
+            return "journalctl _FACILITY=4 _FACILITY=10 -n 50 --no-pager"
+        elif log_type == "application":
+            return "journalctl --user -n 50 --no-pager"
+        return "journalctl -n 50 --no-pager"
+
+
+def translate_journalctl_to_windows(args: list[str]) -> str:
+    follow = False
+    unit = ""
+    auth = False
+    max_events = "50"
+    
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-f", "--follow"):
+            follow = True
+        elif a in ("-u", "--unit"):
+            if i + 1 < len(args):
+                unit = args[i+1]
+                i += 1
+        elif a.startswith("--unit="):
+            unit = a.split("=", 1)[1]
+        elif a in ("-n", "--lines"):
+            if i + 1 < len(args):
+                max_events = args[i+1]
+                i += 1
+        elif a.startswith("-n"):
+            max_events = a[2:]
+        elif "auth" in a.lower() or "security" in a.lower() or "_facility=" in a.lower():
+            auth = True
+        i += 1
+        
+    log_name = "Security" if auth else "System"
+    
+    if follow:
+        if unit:
+            return (
+                f'powershell -Command "$last = Get-Date; while ($true) {{ '
+                f'$events = Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'; StartTime=$last}} -ErrorAction SilentlyContinue '
+                f'| Where-Object {{ $_.Message -match [regex]::Escape(\'{unit}\') }}; '
+                f'$events | Sort-Object TimeCreated | Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap; '
+                f'$last = Get-Date; Start-Sleep -Seconds 2 }}"'
+            )
+        else:
+            return (
+                f'powershell -Command "$last = Get-Date; while ($true) {{ '
+                f'$events = Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'; StartTime=$last}} -ErrorAction SilentlyContinue; '
+                f'$events | Sort-Object TimeCreated | Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap; '
+                f'$last = Get-Date; Start-Sleep -Seconds 2 }}"'
+            )
+    else:
+        if unit:
+            return (
+                f'powershell -Command "Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'}} -MaxEvents {max_events} -ErrorAction SilentlyContinue '
+                f'| Where-Object {{ $_.Message -match [regex]::Escape(\'{unit}\') }} '
+                f'| Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap"'
+            )
+        else:
+            return (
+                f'powershell -Command "Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'}} -MaxEvents {max_events} '
+                f'| Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap"'
+            )
+
+
+def translate_mac_log_to_windows(args: list[str]) -> str:
+    if not args:
+        return ""
+    subcmd = args[0].lower()
+    rest = args[1:]
+    
+    follow = (subcmd == "stream")
+    target = ""
+    for i, a in enumerate(rest):
+        if a in ("--predicate", "--process", "--subsystem") and i + 1 < len(rest):
+            target = rest[i+1]
+            break
+            
+    log_name = "System"
+    if target and ("security" in target.lower() or "auth" in target.lower()):
+        log_name = "Security"
+        
+    if follow:
+        if target:
+            return (
+                f'powershell -Command "$last = Get-Date; while ($true) {{ '
+                f'$events = Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'; StartTime=$last}} -ErrorAction SilentlyContinue '
+                f'| Where-Object {{ $_.Message -match [regex]::Escape(\'{target}\') }}; '
+                f'$events | Sort-Object TimeCreated | Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap; '
+                f'$last = Get-Date; Start-Sleep -Seconds 2 }}"'
+            )
+        else:
+            return (
+                f'powershell -Command "$last = Get-Date; while ($true) {{ '
+                f'$events = Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'; StartTime=$last}} -ErrorAction SilentlyContinue; '
+                f'$events | Sort-Object TimeCreated | Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap; '
+                f'$last = Get-Date; Start-Sleep -Seconds 2 }}"'
+            )
+    else:
+        if target:
+            return (
+                f'powershell -Command "Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'}} -MaxEvents 50 -ErrorAction SilentlyContinue '
+                f'| Where-Object {{ $_.Message -match [regex]::Escape(\'{target}\') }} '
+                f'| Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap"'
+            )
+        else:
+            return (
+                f'powershell -Command "Get-WinEvent -FilterHashtable @{{LogName=\'{log_name}\'}} -MaxEvents 50 '
+                f'| Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap"'
+            )
+
+
+def translate_journalctl_to_mac(args: list[str]) -> str:
+    follow = False
+    unit = ""
+    auth = False
+    
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-f", "--follow"):
+            follow = True
+        elif a in ("-u", "--unit"):
+            if i + 1 < len(args):
+                unit = args[i+1]
+                i += 1
+        elif a.startswith("--unit="):
+            unit = a.split("=", 1)[1]
+        elif "auth" in a.lower() or "security" in a.lower() or "_facility=" in a.lower():
+            auth = True
+        i += 1
+        
+    cmd = "log stream" if follow else "log show --last 1h"
+    parts = []
+    if auth:
+        parts.append('subsystem == "com.apple.Security" OR process == "authorizationhost"')
+    if unit:
+        parts.append(f'process == "{unit}" OR subsystem == "{unit}"')
+        
+    if parts:
+        pred = " OR ".join(f"({p})" for p in parts)
+        return f"{cmd} --predicate '{pred}'"
+    return cmd
+
+
+def translate_mac_log_to_linux(args: list[str]) -> str:
+    if not args:
+        return "journalctl"
+    subcmd = args[0].lower()
+    rest = args[1:]
+    
+    follow = (subcmd == "stream")
+    target = ""
+    for i, a in enumerate(rest):
+        if a in ("--predicate", "--process", "--subsystem") and i + 1 < len(rest):
+            target = rest[i+1]
+            break
+            
+    cmd = "journalctl"
+    if follow:
+        cmd += " -f"
+    else:
+        cmd += " -n 50 --no-pager"
+        
+    if target:
+        if "security" in target.lower() or "auth" in target.lower():
+            cmd += " _FACILITY=4 _FACILITY=10"
+        else:
+            clean_target = target
+            for char in ('"', "'", 'process ==', 'subsystem ==', ' ', '='):
+                clean_target = clean_target.replace(char, '')
+            cmd += f" -u {clean_target}"
+            
+    return cmd
+
+
 # --- Linux/macOS -> Windows ------------------------------------------------
 _UNIX_TO_WIN: dict = {
     # -- file ops ----------------------------------------------------------
     "cp":       lambda a: f'{_q(sys.executable)} -m hopit.cp ' + _join(a),
     "mv":       lambda a: f'{_q(sys.executable)} -m hopit.mv ' + _join(a),
     "rm":       lambda a: f'{_q(sys.executable)} -m hopit.rm ' + _join(a),
+    "journalctl": translate_journalctl_to_windows,
+    "log":       translate_mac_log_to_windows,
     "ls":       lambda a: f'{_q(sys.executable)} -m hopit.ls ' + _join(a),
     "mkdir":    lambda a: f'{_q(sys.executable)} -m hopit.mkdir ' + _join(a),
     "cat":      lambda a: 'type ' + _files(a),
@@ -514,6 +712,8 @@ _WIN_TO_UNIX: dict = {
     "qwinsta":  lambda a: 'w' if IS_MACOS else 'loginctl list-sessions',
     "query":    lambda a: ((('w ' + _join(a[1:]) if len(a) >= 2 else 'w') if a[0].lower() == 'user' else ('w' if IS_MACOS else 'loginctl list-sessions')) if a else ('w' if IS_MACOS else 'loginctl list-sessions')),
     "logoff":   lambda a: (f'pkill -t {a[0]}' if a and not a[0].isdigit() else (f'loginctl terminate-session {a[0]}' if a and not IS_MACOS else f'pkill -t {a[0]}')) if a else 'echo "Usage: logoff <session_id|tty>"',
+    "get-winevent": translate_get_winevent_to_unix,
+    "get-eventlog": translate_get_winevent_to_unix,
 }
 
 # --- Linux-specific -> macOS equivalent (applied on macOS only) -----------
@@ -533,8 +733,7 @@ _LINUX_TO_MAC: dict = {
                             else 'brew services restart ' + _q(a[1]) if len(a)>=2 and a[0]=='restart'
                             else 'brew services info ' + _q(a[1]) if len(a)>=2 and a[0] in ('status','is-active')
                             else 'brew services list' if a and a[0]=='list' else 'launchctl ' + _join(a)),
-    "journalctl": lambda a: ('log stream' if '-f' in a else 'log show --last 1h') + (
-                             ' --predicate \'process == "' + _q(next((a[i+1] for i,x in enumerate(a) if x=='-u'), '')).replace("'","") + '"\''),
+    "journalctl": translate_journalctl_to_mac,
     "service":   lambda a: ('brew services start ' + _q(a[0]) if len(a)>=2 and a[1]=='start'
                             else 'brew services stop ' + _q(a[0]) if len(a)>=2 and a[1]=='stop'
                             else 'brew services info ' + (_q(a[0]) if a else '')),
@@ -596,6 +795,7 @@ _MAC_TO_LINUX: dict = {
         else f"gpasswd -d {_q(a[3])} {_q(a[6])}" if len(a) >= 7 and a[0] == "-o" and a[1] == "edit" and a[2] == "-d" and a[5] == "user"
         else "dseditgroup " + _join(a)
     ),
+    "log": translate_mac_log_to_linux,
 }
 
 

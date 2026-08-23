@@ -27,10 +27,11 @@ class Command:
     mode: str = "capture"                                # "capture" (render nicely) or "stream" (live passthrough)
     arg_completions: Callable[[], list[str]] | None = None  # candidates for arg tab-completion
     arg_completion_kind: str | None = None             # service / installed_pkg / available_pkg
+    is_universal: bool = True
 
 
 BUILTIN_DESCRIPTIONS = {
-    "help": "Show this help",
+    "help": "Show this help, optionally filtered by keyword: help [filter]",
     "clear": "Clear the screen",
     "exit": "Leave hopit-cli, or deactivate environment: exit [venv]",
     "quit": "Leave hopit-cli",
@@ -115,39 +116,101 @@ def system_restart_cmd(svc: str) -> list[str]:
 
 
 def system_logs_cmd(svc: str) -> list[str]:
+    svc = (svc or "").strip()
     if IS_WINDOWS:
-        service = ps_quote(svc)
-        return ps_command(
-            "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
-            "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
-            "Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'} "
-            "-MaxEvents 50 | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) } "
-            "| Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap"
-        )
+        if not svc:
+            return ps_command(
+                "Get-WinEvent -FilterHashtable @{LogName='System'} -MaxEvents 50 | "
+                "Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap"
+            )
+        elif svc.lower() in ("system", "application", "security"):
+            log_name = svc.capitalize()
+            return ps_command(
+                f"Get-WinEvent -FilterHashtable @{{LogName='{log_name}'}} -MaxEvents 50 | "
+                "Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap"
+            )
+        else:
+            service = ps_quote(svc)
+            return ps_command(
+                "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
+                "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
+                "Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'} "
+                "-MaxEvents 50 | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) } "
+                "| Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap"
+            )
     if IS_MACOS:
-        return ["log", "show", "--last", "1h",
-                "--predicate", f'process == "{svc}" OR subsystem == "{svc}"',
-                "--info"]
-    return ["journalctl", "-u", svc, "-n", "50", "--no-pager"]
+        if not svc or svc.lower() == "system":
+            return ["log", "show", "--last", "10m", "--info"]
+        elif svc.lower() in ("auth", "security"):
+            return ["log", "show", "--last", "10m", "--predicate", 'subsystem == "com.apple.Security" OR process == "authorizationhost"', "--info"]
+        elif svc.lower() == "application":
+            return ["log", "show", "--last", "10m", "--predicate", 'process != "kernel"', "--info"]
+        else:
+            return ["log", "show", "--last", "1h",
+                    "--predicate", f'process == "{svc}" OR subsystem == "{svc}"',
+                    "--info"]
+    # Linux
+    if not svc or svc.lower() == "system":
+        return ["journalctl", "-n", "50", "--no-pager"]
+    elif svc.lower() in ("auth", "security"):
+        return ["journalctl", "_FACILITY=4", "_FACILITY=10", "-n", "50", "--no-pager"]
+    elif svc.lower() == "application":
+        return ["journalctl", "--user", "-n", "50", "--no-pager"]
+    else:
+        return ["journalctl", "-u", svc, "-n", "50", "--no-pager"]
 
 
 def system_live_logs_cmd(svc: str) -> list[str]:
+    svc = (svc or "").strip()
     if IS_WINDOWS:
-        service = ps_quote(svc)
-        return ps_command(
-            "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
-            "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
-            "$last = Get-Date; "
-            "while ($true) { "
-            "$events = Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$last; ProviderName='Service Control Manager'} "
-            "-ErrorAction SilentlyContinue | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) }; "
-            "$events | Sort-Object TimeCreated | Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap; "
-            "$last = Get-Date; Start-Sleep -Seconds 2 }"
-        )
+        if not svc:
+            return ps_command(
+                "$last = Get-Date; "
+                "while ($true) { "
+                "$events = Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$last} -ErrorAction SilentlyContinue; "
+                "$events | Sort-Object TimeCreated | Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap; "
+                "$last = Get-Date; Start-Sleep -Seconds 2 }"
+            )
+        elif svc.lower() in ("system", "application", "security"):
+            log_name = svc.capitalize()
+            return ps_command(
+                "$last = Get-Date; "
+                "while ($true) { "
+                f"$events = Get-WinEvent -FilterHashtable @{{LogName='{log_name}'; StartTime=$last}} -ErrorAction SilentlyContinue; "
+                "$events | Sort-Object TimeCreated | Format-Table TimeCreated, ProviderName, Id, LevelDisplayName, Message -Wrap; "
+                "$last = Get-Date; Start-Sleep -Seconds 2 }"
+            )
+        else:
+            service = ps_quote(svc)
+            return ps_command(
+                "$svc = Get-Service -Name " + service + " -ErrorAction SilentlyContinue; "
+                "if (-not $svc) { Write-Error 'Service not found'; exit 1 }; "
+                "$last = Get-Date; "
+                "while ($true) { "
+                "$events = Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$last; ProviderName='Service Control Manager'} "
+                "-ErrorAction SilentlyContinue | Where-Object { $_.Message -match [regex]::Escape($svc.DisplayName) -or $_.Message -match [regex]::Escape($svc.Name) }; "
+                "$events | Sort-Object TimeCreated | Format-Table TimeCreated, Id, LevelDisplayName, Message -Wrap; "
+                "$last = Get-Date; Start-Sleep -Seconds 2 }"
+            )
     if IS_MACOS:
-        return ["log", "stream",
-                "--predicate", f'process == "{svc}" OR subsystem == "{svc}"']
-    return ["journalctl", "-u", svc, "-f"]
+        if not svc or svc.lower() == "system":
+            return ["log", "stream"]
+        elif svc.lower() in ("auth", "security"):
+            return ["log", "stream", "--predicate", 'subsystem == "com.apple.Security" OR process == "authorizationhost"']
+        elif svc.lower() == "application":
+            return ["log", "stream", "--predicate", 'process != "kernel"']
+        else:
+            return ["log", "stream",
+                    "--predicate", f'process == "{svc}" OR subsystem == "{svc}"']
+    # Linux
+    if not svc or svc.lower() == "system":
+        return ["journalctl", "-f"]
+    elif svc.lower() in ("auth", "security"):
+        return ["journalctl", "_FACILITY=4", "_FACILITY=10", "-f"]
+    elif svc.lower() == "application":
+        return ["journalctl", "--user", "-f"]
+    else:
+        return ["journalctl", "-u", svc, "-f"]
 
 
 def shutdown_delay_seconds(arg: str) -> int:
@@ -597,13 +660,15 @@ def build_commands(manager: str | None, names: dict) -> dict:
         ),
         "logs": Command(
             run=system_logs_cmd,
-            desc="Show recent logs for a service",
+            desc="Show recent logs for a service or log category (system/auth/application)",
+            needs_arg=True,
             arg_completions=names["service"],
             arg_completion_kind="service",
         ),
         "live": Command(
             run=system_live_logs_cmd,
-            desc="Follow a service's logs live (Ctrl-C to stop)",
+            desc="Follow a service's logs or log category live (system/auth/application) (Ctrl-C to stop)",
+            needs_arg=True,
             mode="stream",
             arg_completions=names["service"],
             arg_completion_kind="service",
@@ -1441,5 +1506,19 @@ def build_commands(manager: str | None, names: dict) -> dict:
         needs_arg=False,
         mode="stream",
     )
+
+    native_cmds = {
+        "ls", "cp", "mv", "rm", "mkdir", "ps", "pkill", "ping", "traceroute",
+        "dns", "nslookup", "route", "arp", "netstat", "curl", "wget", "ssh",
+        "scp", "sftp", "sqlite", "git", "gitsave", "chmod", "chown", "chgrp",
+        "useradd", "adduser", "userdel", "deluser", "usermod", "passwd",
+        "groupadd", "addgroup", "groupdel", "delgroup", "kubectl",
+        "docker-compose", "compose", "crontab", "schtasks", "install", "uninstall", "update",
+        "hostname", "w", "who", "quser", "qwinsta", "query", "logoff", "loginctl", "whoami",
+        "touch", "cat", "head", "tail", "less", "tree", "find", "grep", "pwd", "cd"
+    }
+    for name, cmd in commands.items():
+        if name in native_cmds:
+            cmd.is_universal = False
 
     return commands

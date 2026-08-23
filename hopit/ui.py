@@ -607,6 +607,7 @@ def get_user_group_perm_completions(words: list[str], commands: dict, aliases_di
                 "route": "View the system network routing table",
                 "hostname": "View or change the system's host name",
                 "shortcut": "View all CLI shortcuts (aliases) and their state",
+                "logs": "View system logs or service logs",
             }
             return [(k, v) for k, v in show_subs.items()]
         elif len(words) >= 3:
@@ -616,6 +617,26 @@ def get_user_group_perm_completions(words: list[str], commands: dict, aliases_di
                 word = words[-1]
                 paths = load_path_entries(word)
                 return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+            elif sub == "logs":
+                from hopit.config import IS_WINDOWS
+                if IS_WINDOWS:
+                    categories = [
+                        ("system", "System event log"),
+                        ("application", "Application event log"),
+                        ("security", "Security event log"),
+                    ]
+                else:
+                    categories = [
+                        ("system", "General system logs (syslog/journalctl)"),
+                        ("auth", "Authentication and security logs"),
+                        ("application", "Application/user logs"),
+                    ]
+                from hopit.loaders import load_service_names
+                try:
+                    services = [(s, "⚙️ service") for s in load_service_names()]
+                except Exception:
+                    services = []
+                return categories + services
 
     elif cmd == "lookup":
         if len(words) == 2:
@@ -1026,6 +1047,36 @@ class LazyCompleter(Completer):
                             break
                 for match, meta in matches:
                     yield Completion(match, start_position=-len(word), display_meta=meta)
+            elif resolved in ("logs", "live"):
+                from hopit.config import IS_WINDOWS
+                if IS_WINDOWS:
+                    categories = [
+                        ("system", "System event log"),
+                        ("application", "Application event log"),
+                        ("security", "Security event log"),
+                    ]
+                else:
+                    categories = [
+                        ("system", "General system logs (syslog/journalctl)"),
+                        ("auth", "Authentication and security logs"),
+                        ("application", "Application/user logs"),
+                    ]
+                services = []
+                if resolved in self.commands and self.commands[resolved].arg_completions:
+                    try:
+                        services = self.commands[resolved].arg_completions()
+                    except Exception:
+                        pass
+                candidates = categories + [(s, "⚙️ service") for s in services]
+                
+                matches = []
+                for cand, meta in candidates:
+                    if _match_start(cand, word):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
             elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "remove", "netconfig", "schedule", "crontab", "schtasks", "sessions", "w", "who", "quser", "qwinsta", "query", "logoff", "loginctl"):
                 candidates = get_user_group_perm_completions(words, self.commands, getattr(self, "aliases", None))
@@ -1201,7 +1252,7 @@ def render_result(
     console.print(Panel(content, title=title, border_style=border, expand=False))
 
 
-def print_help(commands: dict, manager: str | None):
+def print_help(commands: dict, manager: str | None, filter_term: str | None = None):
     # Subcommands mapping for nested/indented display
     SUBCOMMANDS = {
         "git": [
@@ -1377,7 +1428,7 @@ def print_help(commands: dict, manager: str | None):
     # Categorized commands mapping
     categories = {
         "📂 File & Directory Management": [
-            "list", "cd", "back", "open", "create", "mkdir", "copy", "move", "remove", "show", "archive",
+            "list", "ls", "cd", "back", "open", "create", "mkdir", "copy", "cp", "move", "mv", "remove", "rm", "show", "archive",
             "pwd", "whereami", "touch", "cat", "head", "tail", "less", "tree", "find", "grep", "search", "disk"
         ],
         "🐍 Python Virtual Environments": [
@@ -1386,25 +1437,33 @@ def print_help(commands: dict, manager: str | None):
         "⚙️ Process & System Resources": [
             "processes", "process", "top", "kill", "pkill", "killport", "sysinfo", "whoami", "resources", "sqlite",
             "containers", "config", "history", "env", "which", "reboot",
-            "shutdown", "cancel", "port"
+            "shutdown", "cancel", "port", "hostname"
         ],
         "🕒 Task Scheduling & Automation": [
             "schedule", "crontab", "schtasks"
         ],
         "🌐 Network & Web Diagnostics": [
-            "lookup", "dns", "ping", "traceroute", "nslookup", "connections", "netconfig", "netstat"
+            "lookup", "dns", "ping", "traceroute", "nslookup", "connections", "netconfig", "netstat",
+            "route", "arp", "gateway", "mac"
         ],
         "🔒 Remote Access, Services & Security": [
             "ssh", "scp", "sftp", "download", "wget", "curl", "firewall", "user", "group", "permission",
-            "sessions", "session", "status", "start", "stop", "restart", "logs", "live", "enable", "disable",
+            "sessions", "session", "w", "who", "quser", "qwinsta", "query", "logoff", "loginctl",
+            "status", "start", "stop", "restart", "logs", "live", "enable", "disable",
             "chmod", "chown", "chgrp", "useradd", "userdel", "usermod", "passwd",
             "groupadd", "groupdel"
         ],
-        "⎈️ Kubernetes & Containers": [
-            "k8s", "kubectl", "containers", "docker", "docker-compose", "compose"
+        "⎈️ Kubernetes Management": [
+            "k8s", "kubectl"
+        ],
+        "🐳 Container Management": [
+            "containers", "docker", "docker-compose", "compose"
         ],
         "🛠️ Version Control (Git)": [
             "git", "gitsave"
+        ],
+        "📦 Package Management": [
+            "install", "uninstall", "update"
         ]
     }
 
@@ -1432,60 +1491,144 @@ def print_help(commands: dict, manager: str | None):
     if misc:
         categories["🛠️ Other Commands"] = misc
 
-    # Header
-    console.print("[bold green]hopit-cli — Universal Administrative Shell[/bold green]\n")
+    term = (filter_term or "").strip().lower()
 
+    # Filter subcommands
+    filtered_subcommands = {}
+    for key, subs in SUBCOMMANDS.items():
+        parent_desc = ""
+        if key in commands:
+            parent_desc = commands[key].desc.lower()
+        
+        filtered_subs = []
+        for s, d in subs:
+            if (not term or 
+                term in s.lower() or 
+                term in d.lower() or 
+                term in key.lower() or 
+                term in parent_desc):
+                filtered_subs.append((s, d))
+        if filtered_subs:
+            filtered_subcommands[key] = filtered_subs
+
+    # Filter categories
+    filtered_categories = {}
     for cat_title, cmd_list in categories.items():
+        matching_cmds = []
+        for name in cmd_list:
+            if name not in commands:
+                continue
+            cmd = commands[name]
+            desc = cmd.desc.lower()
+            
+            clean_name = name.split()[0].strip()
+            has_matching_sub = clean_name in filtered_subcommands
+            
+            if (not term or 
+                term in name.lower() or 
+                term in desc or 
+                has_matching_sub):
+                matching_cmds.append(name)
+                
+        if matching_cmds:
+            filtered_categories[cat_title] = matching_cmds
+
+    # Filter builtins
+    filtered_builtins = []
+    for name in builtins:
+        desc = BUILTIN_DESCRIPTIONS.get(name, "").lower()
+        if (not term or 
+            term in name.lower() or 
+            term in desc):
+            filtered_builtins.append(name)
+
+    if term and not filtered_categories and not filtered_builtins:
+        console.print(f"[yellow]No commands or subcommands match '{filter_term}'.[/yellow]\n")
+        return
+
+    # Header
+    console.print("[bold green]hopit-cli — Universal Administrative Shell[/bold green]")
+    if term:
+        console.print(f"[dim]Filtering help for: [/dim][bold yellow]{filter_term}[/bold yellow]\n")
+    console.print("[dim]Legend: [/dim]✦ [bold green]Universal API[/bold green] [dim](Cross-platform wrappers) | [/dim][bold cyan]Native Commands[/bold cyan] [dim](Direct/translated OS commands)[/dim]\n")
+
+    for cat_title, cmd_list in filtered_categories.items():
         cat_cmds = []
         for name in cmd_list:
-            if name in commands:
-                cat_cmds.append((name, commands[name]))
-
-        if not cat_cmds:
-            continue
+            cat_cmds.append((name, commands[name]))
 
         table = Table(title=cat_title, show_lines=False, title_justify="left", box=None, padding=(0, 2))
-        table.add_column("Command", style="bold cyan", width=42)
+        table.add_column("Command", width=42)
         table.add_column("Description", width=50)
-        table.add_column("Platform Support", style="bold green", justify="center", width=18)
+        table.add_column("Platform Support", justify="center", width=18)
 
+        univ_cmds = []
+        nat_cmds = []
         for name, cmd in cat_cmds:
+            if getattr(cmd, "is_universal", True):
+                univ_cmds.append((name, cmd))
+            else:
+                nat_cmds.append((name, cmd))
+
+        # Add Universal commands first
+        for name, cmd in univ_cmds:
             privilege_label = "admin" if IS_WINDOWS else "sudo"
             desc = cmd.desc + (f"  [dim]({privilege_label})[/dim]" if cmd.needs_sudo else "")
-            
-            # Universal compat since we support/translate them all
-            compat = "L | M | W"
-            table.add_row(name, desc, compat)
+            compat = "[bold green]L | M | W[/bold green]"
+            table.add_row(f"✦ [bold green]{name}[/bold green]", desc, compat)
             
             # Render subcommands if available
             clean_name = name.split()[0].strip()
-            if clean_name in SUBCOMMANDS:
-                # In the Python venv section, only show the 'venv' subcommand for 'create'
-                subs = SUBCOMMANDS[clean_name]
+            if clean_name in filtered_subcommands:
+                subs = filtered_subcommands[clean_name]
                 if "Python Virtual" in cat_title and clean_name == "create":
                     subs = [(s, d) for s, d in subs if s == "venv"]
                 for sub_name, sub_desc in subs:
-                    table.add_row(f"  ↳ [cyan]{sub_name}[/cyan]", f"[dim]{sub_desc}[/dim]", f"[dim]{compat}[/dim]")
+                    table.add_row(f"  ↳ [green]{sub_name}[/green]", f"[dim]{sub_desc}[/dim]", f"[dim]{compat}[/dim]")
 
         # Inject 'exit venv' for the Python venv section (it's a builtin, not in commands)
         if "Python Virtual" in cat_title:
+            show_exit_venv = not term or "exit" in term or "venv" in term or "virtual" in term
+            if show_exit_venv:
+                table.add_row(
+                    "✦ [bold green]exit[/bold green]",
+                    "Deactivate the current virtual environment: exit venv (prefix ok: exit v)",
+                    "[bold green]L | M | W[/bold green]"
+                )
+                table.add_row(
+                    "  ↳ [green]venv[/green]",
+                    "[dim]Exit (deactivate) the currently active Python virtual environment[/dim]",
+                    "[dim]L | M | W[/dim]"
+                )
+
+        # Visual divider if both sections exist
+        if univ_cmds and nat_cmds:
             table.add_row(
-                "exit",
-                "Deactivate the current virtual environment: exit venv (prefix ok: exit v)",
-                "L | M | W"
+                "[dim]  " + "─" * 38 + "[/dim]",
+                "[dim]" + "─" * 48 + "[/dim]",
+                "[dim]" + "─" * 16 + "[/dim]"
             )
-            table.add_row(
-                "  ↳ [cyan]venv[/cyan]",
-                "[dim]Exit (deactivate) the currently active Python virtual environment[/dim]",
-                "[dim]L | M | W[/dim]"
-            )
+
+        # Add Native commands next
+        for name, cmd in nat_cmds:
+            privilege_label = "admin" if IS_WINDOWS else "sudo"
+            desc = cmd.desc + (f"  [dim]({privilege_label})[/dim]" if cmd.needs_sudo else "")
+            compat = "[dim]L | M | W[/dim]"
+            table.add_row(f"  [bold cyan]{name}[/bold cyan]", f"[dim cyan]{desc}[/dim cyan]", compat)
             
+            # Render subcommands if available
+            clean_name = name.split()[0].strip()
+            if clean_name in filtered_subcommands:
+                subs = filtered_subcommands[clean_name]
+                for sub_name, sub_desc in subs:
+                    table.add_row(f"  ↳ [cyan]{sub_name}[/cyan]", f"[dim]{sub_desc}[/dim]", f"[dim]{compat}[/dim]")
+
         console.print(table)
         console.print()
 
     # CLI Builtins table
     builtin_cmds = []
-    for name in builtins:
+    for name in filtered_builtins:
         if name == "quit":
             continue
         label = "exit / quit" if name == "exit" else name
@@ -1493,12 +1636,12 @@ def print_help(commands: dict, manager: str | None):
         
     if builtin_cmds:
         table = Table(title="🛠️ CLI Built-ins", show_lines=False, title_justify="left", box=None, padding=(0, 2))
-        table.add_column("Command", style="bold cyan", width=42)
+        table.add_column("Command", width=42)
         table.add_column("Description", width=50)
-        table.add_column("Platform Support", style="bold green", justify="center", width=18)
+        table.add_column("Platform Support", justify="center", width=18)
         
         for name, desc in builtin_cmds:
-            table.add_row(name, desc, "L | M | W")
+            table.add_row(f"✦ [bold green]{name}[/bold green]", desc, "[bold green]L | M | W[/bold green]")
         console.print(table)
         console.print()
 

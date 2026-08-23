@@ -255,7 +255,7 @@ def show_context_help(words: list[str], commands: dict):
         
     subcmd = words[1].lower() if len(words) > 1 else ""
     if resolved == "show":
-        matched_sub, _ = resolve_subcommand(subcmd, ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname", "shortcut"])
+        matched_sub, _ = resolve_subcommand(subcmd, ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname", "shortcut", "logs"])
         if matched_sub:
             subcmd = matched_sub
     elif resolved == "lookup":
@@ -378,6 +378,11 @@ def show_context_help(words: list[str], commands: dict):
             ], can_execute=True)
         elif resolved == "exit":
             pass
+        elif resolved == "help":
+            print_cisco_help([
+                ("[filter]", "Optional keyword to filter help commands/descriptions")
+            ], can_execute=True)
+            return
         else:
             print_cisco_help([(resolved, desc)], can_execute=True)
             return
@@ -606,10 +611,30 @@ def show_context_help(words: list[str], commands: dict):
 
     # --- Service control ---
     if resolved in ("status", "start", "stop", "restart", "logs", "live", "enable", "disable"):
-        if not subcmd:
-            print_cisco_help([("<service>", f"Specify the name of the service to {resolved}")], False)
+        if resolved in ("logs", "live"):
+            from hopit.config import IS_WINDOWS
+            if not subcmd:
+                if IS_WINDOWS:
+                    print_cisco_help([
+                        ("system", f"Show {resolved} for System event log"),
+                        ("application", f"Show {resolved} for Application event log"),
+                        ("security", f"Show {resolved} for Security event log"),
+                        ("<service>", f"Show {resolved} for a specific service"),
+                    ], False)
+                else:
+                    print_cisco_help([
+                        ("system", f"Show {resolved} for general system logs"),
+                        ("auth", f"Show {resolved} for authentication/security logs"),
+                        ("application", f"Show {resolved} for application/user logs"),
+                        ("<service>", f"Show {resolved} for a specific service"),
+                    ], False)
+            else:
+                print_cisco_help([], True)
         else:
-            print_cisco_help([], True)
+            if not subcmd:
+                print_cisco_help([("<service>", f"Specify the name of the service to {resolved}")], False)
+            else:
+                print_cisco_help([], True)
         return
 
     # --- Power commands ---
@@ -723,6 +748,7 @@ def show_context_help(words: list[str], commands: dict):
                 ("route [args]", "View the system network routing table"),
                 ("hostname [new_name]", "View or change the system's host name"),
                 ("shortcut", "Show configured shortcuts and aliases"),
+                ("logs <service_or_log>", "Show recent logs for a service or log category"),
             ], False)
         elif subcmd == "file":
             if not rest:
@@ -771,6 +797,25 @@ def show_context_help(words: list[str], commands: dict):
         elif subcmd == "hostname":
             if not rest:
                 print_cisco_help([("[new_name]", "Optional new hostname to set")], True)
+            else:
+                print_cisco_help([], True)
+        elif subcmd == "logs":
+            from hopit.config import IS_WINDOWS
+            if not rest:
+                if IS_WINDOWS:
+                    print_cisco_help([
+                        ("system", "Show System event logs"),
+                        ("application", "Show Application event logs"),
+                        ("security", "Show Security event logs"),
+                        ("<service>", "Show logs for a specific service"),
+                    ], False)
+                else:
+                    print_cisco_help([
+                        ("system", "Show general system logs"),
+                        ("auth", "Show authentication/security logs"),
+                        ("application", "Show application/user logs"),
+                        ("<service>", "Show logs for a specific service"),
+                    ], False)
             else:
                 print_cisco_help([], True)
         return
@@ -1568,7 +1613,7 @@ def execute_line(
         intended_words = [name]
         if name == "show" and rest:
             sub_token = rest[0].lower()
-            valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname"]
+            valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname", "logs"]
             subcmd, _ = resolve_subcommand(sub_token, valid_subs)
             if subcmd:
                 intended_words.append(subcmd)
@@ -1700,7 +1745,8 @@ def execute_line(
             return True
 
     if name == "help":
-        print_help(commands, manager)
+        filter_term = " ".join(rest) if rest else None
+        print_help(commands, manager, filter_term)
         return True
     if name == "clear":
         console.clear()
@@ -1740,12 +1786,12 @@ def execute_line(
 
     if name == "show":
         if not rest:
-            console.print("[yellow]Usage: show [file|start|end|tree|env|history|arp|mac|gateway|ip|route|hostname|shortcut] [arguments][/yellow]")
+            console.print("[yellow]Usage: show [file|start|end|tree|env|history|arp|mac|gateway|ip|route|hostname|shortcut|logs] [arguments][/yellow]")
             return True
         sub_token = rest[0].lower()
         subargs = rest[1:]
         
-        valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname", "shortcut"]
+        valid_subs = ["file", "start", "end", "tree", "env", "history", "arp", "mac", "gateway", "ip", "route", "hostname", "shortcut", "logs"]
         subcmd, matches = resolve_subcommand(sub_token, valid_subs)
         
         if not subcmd:
@@ -1899,6 +1945,18 @@ def execute_line(
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show hostname", cmd_arg=arg, show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show hostname: {e}[/red]")
+        elif subcmd == "logs":
+            if not subargs:
+                console.print("[yellow]Usage: show logs <service_or_log>[/yellow]")
+                return True
+            log_arg = subargs[0]
+            from hopit.commands import system_logs_cmd
+            real_cmd = system_logs_cmd(log_arg)
+            try:
+                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show logs", cmd_arg=log_arg, show_cmd=show_cmd)
+            except Exception as e:
+                console.print(f"[red]Error running show logs: {e}[/red]")
         return True
 
     if name == "find":
