@@ -1365,6 +1365,30 @@ def build_commands(manager: str | None, names: dict) -> dict:
             arg_completions=lambda: [t for t, _ in __import__('hopit.kubernetes', fromlist=['KUBECTL_SUBCOMMANDS']).KUBECTL_SUBCOMMANDS],
             arg_completion_kind="kubectl_subcommand",
         ),
+        "docker": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.docker", "docker"] + (shlex.split(arg) if arg else []),
+            desc="Docker: simple-English or raw docker — docker [list|images|volumes|stats|...]",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=lambda: [t[0] for t in __import__('hopit.docker', fromlist=['DOCKER_TOP_COMPLETIONS']).DOCKER_TOP_COMPLETIONS],
+            arg_completion_kind="docker_subcommand",
+        ),
+        "docker-compose": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.docker", "compose"] + (shlex.split(arg) if arg else []),
+            desc="Docker Compose: simple-English or raw compose — docker-compose [up|down|list|...]",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=lambda: [t[0] for t in __import__('hopit.docker', fromlist=['COMPOSE_TOP_COMPLETIONS']).COMPOSE_TOP_COMPLETIONS],
+            arg_completion_kind="compose_subcommand",
+        ),
+        "compose": Command(
+            run=lambda arg: [sys.executable, "-m", "hopit.docker", "compose"] + (shlex.split(arg) if arg else []),
+            desc="Docker Compose: simple-English or raw compose (alias for docker-compose) — compose [up|down|list|...]",
+            needs_arg=False,
+            mode="stream",
+            arg_completions=lambda: [t[0] for t in __import__('hopit.docker', fromlist=['COMPOSE_TOP_COMPLETIONS']).COMPOSE_TOP_COMPLETIONS],
+            arg_completion_kind="compose_subcommand",
+        ),
     }
 
     if manager:

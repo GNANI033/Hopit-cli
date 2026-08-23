@@ -644,5 +644,90 @@ class TestUniversalCommands(unittest.TestCase):
             finally:
                 os.chdir(orig_cwd)
 
+    def test_docker_and_compose_registrations(self):
+        from hopit.commands import build_commands
+        names = {
+            "service": lambda: [],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+        self.assertIn("docker", cmds)
+        self.assertIn("docker-compose", cmds)
+        self.assertIn("compose", cmds)
+
+        # Test build of argv
+        self.assertEqual(cmds["docker"].run("list"), [sys.executable, "-m", "hopit.docker", "docker", "list"])
+        self.assertEqual(cmds["compose"].run("up"), [sys.executable, "-m", "hopit.docker", "compose", "up"])
+
+    def test_docker_autocomplete(self):
+        from hopit.ui import LazyCompleter
+        from hopit.commands import build_commands
+        from prompt_toolkit.document import Document
+
+        names = {
+            "service": lambda: [],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+        completer = LazyCompleter(cmds)
+
+        # Test docker subcommands
+        doc = Document("docker ")
+        completions = list(completer.get_completions(doc, None))
+        completion_texts = [c.text for c in completions]
+        self.assertIn("list", completion_texts)
+        self.assertIn("images", completion_texts)
+        self.assertIn("volumes", completion_texts)
+        self.assertIn("stats", completion_texts)
+
+        # Test compose subcommands
+        doc = Document("compose ")
+        completions = list(completer.get_completions(doc, None))
+        completion_texts = [c.text for c in completions]
+        self.assertIn("up", completion_texts)
+        self.assertIn("down", completion_texts)
+        self.assertIn("list", completion_texts)
+
+    def test_docker_cisco_style_context_help(self):
+        from unittest.mock import patch
+        from hopit.main import show_context_help
+        from hopit.commands import build_commands
+
+        names = {
+            "service": lambda: [],
+            "installed_pkg": lambda: [],
+            "available_pkg": lambda prefix="": [],
+            "path": lambda word="": [],
+            "adapter": lambda: [],
+            "user": lambda: [],
+            "group": lambda: [],
+        }
+        cmds = build_commands(None, names)
+
+        # Test 'docker ?'
+        with patch("hopit.main.console.print") as mock_print:
+            show_context_help(["docker"], cmds)
+            mock_print.assert_called()
+            panel = mock_print.call_args[0][0]
+            self.assertIn("Help: docker ?", str(panel.title))
+
+        # Test 'compose ?'
+        with patch("hopit.mock_print" if not hasattr(self, "mock_print") else "hopit.main.console.print", create=True):
+            with patch("hopit.main.console.print") as mock_print:
+                show_context_help(["compose"], cmds)
+                mock_print.assert_called()
+                panel = mock_print.call_args[0][0]
+                self.assertIn("Help: compose ?", str(panel.title))
+
 if __name__ == "__main__":
     unittest.main()

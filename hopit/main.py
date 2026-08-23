@@ -329,6 +329,20 @@ def show_context_help(words: list[str], commands: dict):
         ])
         if matched_sub:
             subcmd = matched_sub
+    elif resolved == "docker":
+        matched_sub, _ = resolve_subcommand(subcmd, [
+            "list", "containers", "ps", "images", "volumes", "networks", "stats", "usage",
+            "start", "stop", "restart", "remove", "rm", "delete-image", "rmi",
+            "logs", "follow", "tail", "exec", "shell", "run", "prune", "compose"
+        ])
+        if matched_sub:
+            subcmd = matched_sub
+    elif resolved in ("compose", "docker-compose"):
+        matched_sub, _ = resolve_subcommand(subcmd, [
+            "up", "down", "list", "ps", "logs", "restart", "build"
+        ])
+        if matched_sub:
+            subcmd = matched_sub
 
     rest = words[2:]
     title = f"[bold green]Help: {' '.join(words)} ?[/bold green]"
@@ -1423,6 +1437,31 @@ def show_context_help(words: list[str], commands: dict):
             print_cisco_help([("<node_name>", "Specify the node to perform the operation on")], False)
         else:
             print_cisco_help([("[args...]", "Specify sub-arguments or options for the kubectl subcommand")], True)
+    # --- Docker & Docker Compose ---
+    if resolved == "docker":
+        if not subcmd:
+            from hopit.docker import print_docker_help
+            print_docker_help(title=title)
+            return
+        if subcmd in ("start", "stop", "restart", "remove", "rm", "logs", "follow", "tail", "exec", "shell"):
+            print_cisco_help([("<container>", f"Specify container name to {subcmd}")], False)
+        elif subcmd in ("delete-image", "rmi"):
+            print_cisco_help([("<image>", "Specify image name/ID to delete")], False)
+        elif subcmd == "run":
+            print_cisco_help([("<image>", "Specify image name to run")], False)
+        else:
+            print_cisco_help([], True)
+        return
+
+    if resolved in ("compose", "docker-compose"):
+        if not subcmd:
+            from hopit.docker import print_compose_help
+            print_compose_help(title=title)
+            return
+        if subcmd in ("logs", "restart", "build", "stop", "start", "rm", "up"):
+            print_cisco_help([("<service>", f"Specify compose service name to {subcmd} (optional)")], True)
+        else:
+            print_cisco_help([], True)
         return
 
     # --- General Fallback ---

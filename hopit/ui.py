@@ -703,6 +703,64 @@ def get_user_group_perm_completions(words: list[str], commands: dict, aliases_di
     return []
 
 
+def get_docker_completions(words: list[str]) -> list[tuple[str, str]]:
+    """
+    Dynamic Docker and Docker Compose completions.
+    Returns a list of (value, display_meta) tuples.
+    """
+    try:
+        from hopit.docker import (
+            DOCKER_TOP_COMPLETIONS, COMPOSE_TOP_COMPLETIONS,
+            load_docker_containers, load_docker_images, load_compose_services
+        )
+    except ImportError:
+        return []
+
+    cmd = words[0].lower()
+    n = len(words)
+
+    # ─── docker ──────────────────────────────────────────────
+    if cmd == "docker":
+        if n == 2:
+            return list(DOCKER_TOP_COMPLETIONS)
+
+        sub = words[1].lower()
+
+        # docker compose ...
+        if sub == "compose":
+            if n == 3:
+                return list(COMPOSE_TOP_COMPLETIONS)
+            # docker compose logs <service> / restart <service> / build <service>
+            if n == 4:
+                sub2 = words[2].lower()
+                if sub2 in ("logs", "restart", "build", "stop", "start", "rm", "up"):
+                    return [(s, "🛠️ compose service") for s in load_compose_services()]
+            return []
+
+        # docker start/stop/restart/remove/logs/follow/exec <container>
+        if sub in ("start", "stop", "restart", "remove", "rm", "logs", "follow", "tail", "exec", "shell") and n == 3:
+            return [(c, "📦 container") for c in load_docker_containers(all_containers=True)]
+
+        # docker delete-image / rmi <image>
+        if sub in ("delete-image", "rmi") and n == 3:
+            return [(img, "💿 image") for img in load_docker_images()]
+
+        return []
+
+    # ─── compose / docker-compose ────────────────────────────
+    if cmd in ("compose", "docker-compose"):
+        if n == 2:
+            return list(COMPOSE_TOP_COMPLETIONS)
+
+        sub = words[1].lower()
+        if sub in ("logs", "restart", "build", "stop", "start", "rm", "up") and n == 3:
+            return [(s, "🛠️ compose service") for s in load_compose_services()]
+
+        return []
+
+    return []
+
+
 def get_k8s_completions(words: list[str]) -> list[tuple[str, str]]:
     """
     Dynamic Kubernetes completions.
@@ -881,7 +939,7 @@ class LazyCompleter(Completer):
         aliases_to_hide = {
             "permissions", "drive", "compress", "ps", "where", "findcommand",
             "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-            "scrollfile", "findfile", "findtext", "kubernetes", "doskey"
+            "scrollfile", "findfile", "findtext", "kubernetes", "doskey", "docker-compose"
         }
         self.all_names = [k for k in commands if k not in aliases_to_hide] + list(BUILTIN_DESCRIPTIONS.keys())
 
@@ -927,6 +985,8 @@ class LazyCompleter(Completer):
                 resolved = "grep"
             elif head == "whereami":
                 resolved = "pwd"
+            elif head == "docker-compose":
+                resolved = "compose"
 
             if resolved == "git":
                 git_candidates = get_git_completions(words)
@@ -980,6 +1040,17 @@ class LazyCompleter(Completer):
                 return
             elif resolved in ("k8s", "kubernetes", "kubectl"):
                 candidates = get_k8s_completions(words)
+                matches = []
+                for cand, meta in candidates:
+                    if _match_start(cand, word):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
+                return
+            elif resolved in ("docker", "docker-compose", "compose"):
+                candidates = get_docker_completions(words)
                 matches = []
                 for cand, meta in candidates:
                     if _match_start(cand, word):
@@ -1330,7 +1401,7 @@ def print_help(commands: dict, manager: str | None):
             "groupadd", "groupdel"
         ],
         "⎈️ Kubernetes & Containers": [
-            "k8s", "kubectl", "containers",
+            "k8s", "kubectl", "containers", "docker", "docker-compose", "compose"
         ],
         "🛠️ Version Control (Git)": [
             "git", "gitsave"
@@ -1350,7 +1421,7 @@ def print_help(commands: dict, manager: str | None):
     aliases_to_hide = {
         "permissions", "drive", "compress", "ps", "where", "findcommand",
         "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
-        "scrollfile", "findfile", "findtext", "kubernetes", "doskey"
+        "scrollfile", "findfile", "findtext", "kubernetes", "doskey", "docker-compose"
     }
 
     misc = []
