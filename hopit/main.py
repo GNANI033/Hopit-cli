@@ -629,9 +629,9 @@ def show_context_help(words: list[str], commands: dict):
     # --- File operations ---
     if resolved in ("copy", "move"):
         if not subcmd:
-            print_cisco_help([("<source>", "Specify the file or folder to copy/move")], False)
+            print_cisco_help([("<source>", "Specify the file or folder to copy/move (use Tab/Arrow to select, →/Space to drill into folders)")], False)
         elif len(words) == 2:
-            print_cisco_help([("<destination>", "Specify the target destination path")], False)
+            print_cisco_help([("<destination>", "Specify the target destination path (use Tab/Arrow to select, →/Space to drill into folders)")], False)
         else:
             print_cisco_help([], True)
         return
@@ -641,10 +641,10 @@ def show_context_help(words: list[str], commands: dict):
             if resolved == "remove":
                 print_cisco_help([
                     ("shortcut <name>", "Remove a CLI shortcut"),
-                    ("<path>", "Specify the file or folder to remove"),
+                    ("<path>", "Specify the file or folder to remove (use Tab/Arrow to select, →/Space to drill into folders)"),
                 ], False)
             else:
-                print_cisco_help([("<path>", "Specify the folder to create")], False)
+                print_cisco_help([("<path>", "Specify the folder to create (use Tab/Arrow to select, →/Space to drill into folders)")], False)
         else:
             if resolved == "remove" and subcmd == "shortcut":
                 if not rest:
@@ -666,12 +666,12 @@ def show_context_help(words: list[str], commands: dict):
             ], False)
         elif subcmd == "folder":
             if not rest:
-                print_cisco_help([("<path>", "Specify the directory path to create")], False)
+                print_cisco_help([("<path>", "Specify the directory path to create (use Tab/Arrow to select, →/Space to drill into folders)")], False)
             else:
                 print_cisco_help([], True)
         elif subcmd == "file":
             if not rest:
-                print_cisco_help([("<path>", "Specify the file path to create")], False)
+                print_cisco_help([("<path>", "Specify the file path to create (use Tab/Arrow to select, →/Space to drill into folders)")], False)
             else:
                 print_cisco_help([], True)
         elif subcmd == "shortcut":
@@ -681,7 +681,7 @@ def show_context_help(words: list[str], commands: dict):
                 print_cisco_help([], True)
         elif subcmd == "venv":
             if not rest:
-                print_cisco_help([("<path>", "Specify the path where the new virtual environment should be created")], False)
+                print_cisco_help([("<path>", "Specify the path where the new virtual environment should be created (use Tab/Arrow to select, →/Space to drill into folders)")], False)
             else:
                 print_cisco_help([], True)
         return
@@ -706,27 +706,27 @@ def show_context_help(words: list[str], commands: dict):
             ], False)
         elif subcmd == "file":
             if not rest:
-                print_cisco_help([("<path>", "Specify the file path to show")], False)
+                print_cisco_help([("<path>", "Specify the file path to show (use Tab/Arrow to select, →/Space to drill into folders)")], False)
             else:
                 print_cisco_help([], True)
         elif subcmd in ("start", "end"):
             if not rest:
                 print_cisco_help([
                     ("-n <lines>", "Specify the number of lines to display (default: 10)"),
-                    ("<file_path>", f"Specify the file path to show {subcmd} of"),
+                    ("<file_path>", f"Specify the file path to show {subcmd} of (use Tab/Arrow to select, →/Space to drill into folders)"),
                 ], False)
             elif rest[0].lower() == "-n":
                 if len(rest) == 1:
                     print_cisco_help([("<lines>", "Specify the number of lines")], False)
                 elif len(rest) == 2:
-                    print_cisco_help([("<file_path>", f"Specify the file path to show {subcmd} of")], False)
+                    print_cisco_help([("<file_path>", f"Specify the file path to show {subcmd} of (use Tab/Arrow to select, →/Space to drill into folders)")], False)
                 else:
                     print_cisco_help([], True)
             else:
                 print_cisco_help([], True)
         elif subcmd == "tree":
             if not rest:
-                print_cisco_help([("[path]", "Specify optional directory path")], True)
+                print_cisco_help([("[path]", "Specify optional directory path (use Tab/Arrow to select, →/Space to drill into folders)")], True)
             elif len(rest) == 1:
                 print_cisco_help([("[depth]", "Specify optional search depth (integer)")], True)
             else:
@@ -2757,14 +2757,44 @@ def main():
     all_names = list(commands.keys()) + list(BUILTIN_DESCRIPTIONS.keys())
     completer = LazyCompleter(commands, aliases)
 
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.filters import has_completions
+
+    kb = KeyBindings()
+
+    @kb.add("right", filter=has_completions)
+    def _(event):
+        buffer = event.current_buffer
+        if buffer.complete_state and buffer.complete_state.current_completion:
+            completion = buffer.complete_state.current_completion
+            buffer.apply_completion(completion)
+            if completion.text.endswith("/") or completion.text.endswith("\\"):
+                buffer.start_completion()
+        else:
+            buffer.cursor_right()
+
+    @kb.add("space", filter=has_completions)
+    def _(event):
+        buffer = event.current_buffer
+        if buffer.complete_state and buffer.complete_state.current_completion:
+            completion = buffer.complete_state.current_completion
+            buffer.apply_completion(completion)
+            if completion.text.endswith("/") or completion.text.endswith("\\"):
+                buffer.start_completion()
+            else:
+                buffer.insert_text(" ")
+        else:
+            buffer.insert_text(" ")
+
     def bottom_toolbar():
-        return HTML(" <b>Tab</b> complete  •  <b>Enter</b> run  •  <b>Ctrl-D</b> quit  •  type 'help'")
+        return HTML(" <b>Tab</b> complete  •  <b>→ / Space</b> drill into folder  •  <b>Enter</b> run  •  <b>Ctrl-D</b> quit")
 
     session = PromptSession(
         history=InMemoryHistory(),
         completer=completer,
         complete_while_typing=True,
         bottom_toolbar=bottom_toolbar,
+        key_bindings=kb,
     )
 
     theme = get_active_theme()

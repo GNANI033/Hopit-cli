@@ -40,6 +40,13 @@ def resolve_command(all_names, token: str):
     return None, matches
 
 
+def _match_start(cand: str, word: str) -> bool:
+    """Case-insensitive and slash-agnostic startswith check for autocomplete candidates."""
+    c = cand.strip('"\'').lower().replace('\\', '/')
+    w = word.strip('"\'').lower().replace('\\', '/')
+    return c.startswith(w)
+
+
 def completion_matches(text_before_cursor: str, commands: dict, all_names: list[str]) -> list[str]:
     """Return bounded matching command or argument candidates."""
     words = text_before_cursor.split(" ")
@@ -76,9 +83,8 @@ def completion_matches(text_before_cursor: str, commands: dict, all_names: list[
         candidates = cmd.arg_completions()
 
     matches = []
-    word_lower = word.lower()
     for cand in candidates:
-        if cand.lower().startswith(word_lower):
+        if _match_start(cand, word):
             matches.append(cand)
             if len(matches) >= MAX_ARG_COMPLETIONS:
                 break
@@ -924,10 +930,9 @@ class LazyCompleter(Completer):
 
             if resolved == "git":
                 git_candidates = get_git_completions(words)
-                word_lower = word.lower()
                 matches = []
                 for cand, meta in git_candidates:
-                    if cand.lower().startswith(word_lower):
+                    if _match_start(cand, word):
                         matches.append((cand, meta))
                         if len(matches) >= MAX_ARG_COMPLETIONS:
                             break
@@ -953,10 +958,9 @@ class LazyCompleter(Completer):
                 else:
                     candidates = []
 
-                word_lower = word.lower()
                 matches = []
                 for cand, meta in candidates:
-                    if cand.lower().startswith(word_lower):
+                    if _match_start(cand, word):
                         matches.append((cand, meta))
                         if len(matches) >= MAX_ARG_COMPLETIONS:
                             break
@@ -965,10 +969,9 @@ class LazyCompleter(Completer):
                 return
             elif resolved in ("user", "group", "permission", "firewall", "disk", "archive", "show", "lookup", "enter", "exit", "remove", "netconfig", "schedule", "crontab", "schtasks", "sessions", "w", "who", "quser", "qwinsta", "query", "logoff", "loginctl"):
                 candidates = get_user_group_perm_completions(words, self.commands, getattr(self, "aliases", None))
-                word_lower = word.lower()
                 matches = []
                 for cand, meta in candidates:
-                    if cand.lower().startswith(word_lower):
+                    if _match_start(cand, word):
                         matches.append((cand, meta))
                         if len(matches) >= MAX_ARG_COMPLETIONS:
                             break
@@ -977,10 +980,9 @@ class LazyCompleter(Completer):
                 return
             elif resolved in ("k8s", "kubernetes", "kubectl"):
                 candidates = get_k8s_completions(words)
-                word_lower = word.lower()
                 matches = []
                 for cand, meta in candidates:
-                    if cand.lower().startswith(word_lower):
+                    if _match_start(cand, word):
                         matches.append((cand, meta))
                         if len(matches) >= MAX_ARG_COMPLETIONS:
                             break
@@ -1008,10 +1010,9 @@ class LazyCompleter(Completer):
                             display_meta="info"
                         )
                 candidates = get_user_group_perm_completions(words, self.commands, self.aliases)
-                word_lower = word.lower()
                 matches = []
                 for cand, meta in candidates:
-                    if cand.lower().startswith(word_lower):
+                    if _match_start(cand, word):
                         matches.append((cand, meta))
                         if len(matches) >= MAX_ARG_COMPLETIONS:
                             break

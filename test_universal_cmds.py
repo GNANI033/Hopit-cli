@@ -582,5 +582,67 @@ class TestUniversalCommands(unittest.TestCase):
                 rm_main()
             self.assertFalse(os.path.exists(dir3))
 
+    def test_path_autocomplete(self):
+        import tempfile
+        import os
+        from hopit.loaders import load_path_entries
+        from hopit.ui import LazyCompleter
+        from hopit.commands import build_commands
+        from unittest.mock import MagicMock, patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orig_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                os.makedirs("gnani/downloads")
+                with open("gnani/downloads/test.txt", "w") as f:
+                    f.write("hello")
+
+                # Test load_path_entries logic
+                # 1. No prefix (returns entries in CWD)
+                entries = load_path_entries("")
+                self.assertIn("gnani/", entries)
+
+                # 2. Directory prefix
+                entries = load_path_entries("gnani/")
+                self.assertIn("gnani/downloads/", entries)
+
+                # 3. Deep directory prefix
+                entries = load_path_entries("gnani/downloads/")
+                self.assertIn("gnani/downloads/test.txt", entries)
+
+                # 4. Partial filename matching
+                entries = load_path_entries("gnani/downloads/te")
+                self.assertIn("gnani/downloads/test.txt", entries)
+
+                # Test LazyCompleter behavior
+                names = {
+                    "service": lambda: [],
+                    "installed_pkg": lambda: [],
+                    "available_pkg": lambda prefix="": [],
+                    "path": load_path_entries,
+                    "adapter": lambda: [],
+                    "user": lambda: [],
+                    "group": lambda: [],
+                }
+                commands = build_commands(None, names)
+                completer = LazyCompleter(commands, {})
+
+                # Mock document for prompt_toolkit
+                doc = MagicMock()
+                
+                # Test completions on "show file gnani/"
+                doc.text_before_cursor = "show file gnani/"
+                completions = list(completer.get_completions(doc, None))
+                self.assertTrue(any(c.text == "gnani/downloads/" for c in completions))
+
+                # Test completions on "show file gnani/downloads/te"
+                doc.text_before_cursor = "show file gnani/downloads/te"
+                completions = list(completer.get_completions(doc, None))
+                self.assertTrue(any(c.text == "gnani/downloads/test.txt" for c in completions))
+
+            finally:
+                os.chdir(orig_cwd)
+
 if __name__ == "__main__":
     unittest.main()

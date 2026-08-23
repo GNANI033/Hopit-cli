@@ -279,21 +279,64 @@ def load_path_entries(prefix: str = "") -> list[str]:
     try:
         sep = "\\" if (IS_WINDOWS and "\\" in (prefix or "")) else "/"
         if prefix:
-            exp = os.path.expanduser(prefix)
-            has_sep = "/" in prefix or (IS_WINDOWS and "\\" in prefix)
-            dir_exp  = os.path.dirname(exp)  if has_sep else "."
-            dir_orig = os.path.dirname(prefix) if has_sep else ""
-            if not dir_exp:
-                dir_exp = "."
+            # Handle Windows drive letters (e.g. C: or d:)
+            if len(prefix) == 2 and prefix[1] == ':':
+                dir_part = prefix + sep
+                last_part = ""
+            else:
+                # Find the last separator
+                last_sep_idx = -1
+                for i, char in enumerate(prefix):
+                    if char in ('/', '\\'):
+                        last_sep_idx = i
+                
+                if last_sep_idx != -1:
+                    dir_part = prefix[:last_sep_idx + 1]
+                    last_part = prefix[last_sep_idx + 1:]
+                else:
+                    dir_part = ""
+                    last_part = prefix
+            
+            dir_to_list = os.path.expanduser(dir_part) if dir_part else "."
         else:
-            dir_exp = "."
-            dir_orig = ""
+            dir_part = ""
+            last_part = ""
+            dir_to_list = "."
+
+        if not dir_to_list:
+            dir_to_list = "."
+
+        if not os.path.isdir(dir_to_list):
+            return []
+
         entries = []
-        for name in sorted(os.listdir(dir_exp)):
-            full = (dir_orig.rstrip("/\\") + sep + name) if dir_orig else name
-            if os.path.isdir(os.path.join(dir_exp, name)):
-                full += sep
-            entries.append(full)
+        is_case_sensitive = not (IS_WINDOWS or IS_MACOS)
+        last_part_lower = last_part.lower()
+
+        for name in sorted(os.listdir(dir_to_list)):
+            # Skip hidden files unless we explicitly typed a leading dot
+            if name.startswith('.') and not last_part.startswith('.'):
+                continue
+
+            # Check matching
+            if not is_case_sensitive:
+                matched = name.lower().startswith(last_part_lower)
+            else:
+                matched = name.startswith(last_part)
+
+            if matched:
+                # Construct path
+                if dir_part:
+                    if dir_part.endswith('/') or dir_part.endswith('\\'):
+                        full = dir_part + name
+                    else:
+                        full = dir_part + sep + name
+                else:
+                    full = name
+
+                if os.path.isdir(os.path.join(dir_to_list, name)):
+                    full += sep
+                entries.append(full)
         return entries
     except OSError:
         return []
