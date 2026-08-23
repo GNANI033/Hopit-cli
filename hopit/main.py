@@ -129,11 +129,17 @@ def load_shell_aliases(shell: str) -> dict:
     if IS_WINDOWS:
         return {}
     try:
-        # -i = interactive (sources rc), -c 'alias' prints all aliases
+        rc = shell_rc_file(shell)
+        if shell == "bash":
+            cmd_str = f'shopt -s expand_aliases && [ -f "{rc}" ] && source "{rc}" && alias'
+        else:
+            cmd_str = f'[ -f "{rc}" ] && source "{rc}" && alias'
+
         result = subprocess.run(
-            [shell, "-i", "-c", "alias"],
+            [shell, "-c", cmd_str],
+            stdin=subprocess.DEVNULL,
             capture_output=True, text=True, timeout=5,
-            env={**os.environ, "PS1": "_"}   # suppress PS1 noise
+            env={**os.environ, "PS1": "_"}
         )
         aliases = {}
         for line in result.stdout.splitlines():
@@ -2762,10 +2768,21 @@ def main():
 
     manager = detect_package_manager()
     shell = detect_user_shell()
-    aliases = load_shell_aliases(shell)
 
-    services = load_service_names()
-    installed_pkgs = load_installed_packages(manager)               # fast enough to load synchronously
+    # Load shell aliases in the background to prevent slow shell initialization from blocking startup
+    aliases = {}
+    import threading
+    def load_aliases_bg():
+        try:
+            loaded = load_shell_aliases(shell)
+            aliases.update(loaded)
+        except Exception:
+            pass
+    threading.Thread(target=load_aliases_bg, daemon=True).start()
+
+    # Load services and installed packages in the background to ensure sub-100ms startup times
+    services_holder = BackgroundNames(load_service_names, start_immediately=True)
+    installed_pkgs_holder = BackgroundNames(lambda: load_installed_packages(manager), start_immediately=True)
 
     # For winget, available package search is done live at completion time
     # (passing the current prefix to `winget search`). For all other managers
@@ -2783,8 +2800,8 @@ def main():
     groups_holder = BackgroundNames(load_groups, start_immediately=False)
 
     names = {
-        "service": lambda: services,
-        "installed_pkg": lambda: installed_pkgs,
+        "service": services_holder.get,
+        "installed_pkg": installed_pkgs_holder.get,
         "available_pkg": available_pkg_getter,
         "path": load_path_entries,
         "adapter": load_adapters,

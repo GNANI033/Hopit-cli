@@ -109,7 +109,11 @@ MANAGER_PKG = {
 
 def _run_lines(argv: list[str], timeout: int) -> list[str]:
     try:
-        out = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        out = subprocess.run(
+            argv,
+            stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, timeout=timeout
+        )
         return out.stdout.splitlines()
     except Exception:
         return []
