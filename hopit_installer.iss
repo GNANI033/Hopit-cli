@@ -30,7 +30,8 @@ PrivilegesRequired=lowest
 ; Application Icon Settings
 ; ------------------------------
 ; To change the icon of the Installer (.exe) itself, uncomment and edit the path below:
-; SetupIconFile=.\path\to\your_custom_icon.ico
+; (Note: Windows requires this to be a .ico file, not a .jpg or .png)
+SetupIconFile=.\Images\logo.ico
 
 ; To change the icon that shows in the Windows "Add/Remove Programs" panel, 
 ; you can just change the icon of your C# launcher when you compile it.
