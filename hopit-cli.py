@@ -17,6 +17,14 @@ if script_dir not in existing_pythonpath.split(os.pathsep):
 # Force UTF-8 encoding globally to prevent Windows UnicodeEncodeError crashes in child processes
 os.environ["PYTHONUTF8"] = "1"
 
+# Also force the current process to use UTF-8 for standard output (fixes '?' replacing emojis)
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 from hopit.main import main
 
 if __name__ == "__main__":
