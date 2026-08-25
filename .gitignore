@@ -47,3 +47,6 @@ Thumbs.db
 # Local Codex/agent workspace state
 .agents/
 .codex/
+
+# Documentation
+WINDOWS_BUILD_GUIDE.md
