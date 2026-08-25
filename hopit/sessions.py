@@ -10,14 +10,14 @@ from hopit.config import IS_WINDOWS, IS_MACOS
 
 def get_windows_sessions():
     try:
-        proc = subprocess.run(["query", "user"], capture_output=True, text=True, check=True)
+        proc = subprocess.run(["query", "user"], capture_output=True, text=True, errors="ignore", check=True)
         if proc.stdout and proc.stdout.strip():
             return proc.stdout
     except Exception:
         pass
         
     try:
-        proc = subprocess.run(["qwinsta"], capture_output=True, text=True, check=True)
+        proc = subprocess.run(["qwinsta"], capture_output=True, text=True, errors="ignore", check=True)
         if proc.stdout and proc.stdout.strip():
             return proc.stdout
     except Exception:
@@ -42,7 +42,7 @@ def get_windows_sessions():
                 "} "
             "} | ConvertTo-Json -Compress"
         )
-        proc = subprocess.run(["powershell", "-Command", ps_script], capture_output=True, text=True, check=True)
+        proc = subprocess.run(["powershell", "-Command", ps_script], capture_output=True, text=True, errors="ignore", check=True)
         if proc.stdout and proc.stdout.strip():
             return proc.stdout
     except Exception:
@@ -174,12 +174,12 @@ def parse_windows_sessions(output: str):
 def get_unix_sessions():
     try:
         # Try running 'w' without headers
-        proc = subprocess.run(["w", "-h"], capture_output=True, text=True, check=True)
+        proc = subprocess.run(["w", "-h"], capture_output=True, text=True, errors="ignore", check=True)
         return proc.stdout, "w"
     except Exception:
         try:
             # Fallback to 'who'
-            proc = subprocess.run(["who"], capture_output=True, text=True, check=True)
+            proc = subprocess.run(["who"], capture_output=True, text=True, errors="ignore", check=True)
             return proc.stdout, "who"
         except Exception:
             return None, ""
@@ -230,7 +230,7 @@ def get_tmux_sessions():
     if not shutil.which("tmux"):
         return None
     try:
-        proc = subprocess.run(["tmux", "list-sessions"], capture_output=True, text=True)
+        proc = subprocess.run(["tmux", "list-sessions"], capture_output=True, text=True, errors="ignore")
         if proc.returncode == 0:
             return proc.stdout.strip()
     except Exception:
@@ -268,7 +268,7 @@ def get_screen_sessions():
     if not shutil.which("screen"):
         return None
     try:
-        proc = subprocess.run(["screen", "-list"], capture_output=True, text=True)
+        proc = subprocess.run(["screen", "-list"], capture_output=True, text=True, errors="ignore")
         return proc.stdout.strip()
     except Exception:
         pass
@@ -381,7 +381,7 @@ def kill_session(target):
         
     if IS_WINDOWS:
         try:
-            proc = subprocess.run(["logoff", target], capture_output=True, text=True)
+            proc = subprocess.run(["logoff", target], capture_output=True, text=True, errors="ignore")
             if proc.returncode == 0:
                 console.print(f"[bold green]✓ Successfully logged off session {target}[/bold green]")
                 return True
@@ -411,7 +411,7 @@ def kill_session(target):
         # Check Screen session
         if shutil.which("screen"):
             try:
-                list_proc = subprocess.run(["screen", "-list"], capture_output=True, text=True)
+                list_proc = subprocess.run(["screen", "-list"], capture_output=True, text=True, errors="ignore")
                 if target in list_proc.stdout:
                     subprocess.run(["screen", "-XS", target, "quit"])
                     console.print(f"[bold green]✓ Successfully terminated Screen session '{target}'[/bold green]")
@@ -427,14 +427,14 @@ def kill_session(target):
         console.print(f"[cyan]Attempting to terminate session on {tty_name}...[/cyan]")
         try:
             # Try pkill -t
-            proc = subprocess.run(["pkill", "-t", tty_name], capture_output=True, text=True)
+            proc = subprocess.run(["pkill", "-t", tty_name], capture_output=True, text=True, errors="ignore")
             if proc.returncode == 0:
                 console.print(f"[bold green]✓ Successfully terminated processes on {tty_name}[/bold green]")
                 return True
             else:
                 # Try systemd logind terminate-session if target is digit
                 if target.isdigit() and shutil.which("loginctl"):
-                    login_proc = subprocess.run(["loginctl", "terminate-session", target], capture_output=True, text=True)
+                    login_proc = subprocess.run(["loginctl", "terminate-session", target], capture_output=True, text=True, errors="ignore")
                     if login_proc.returncode == 0:
                         console.print(f"[bold green]✓ Successfully terminated logind session {target}[/bold green]")
                         return True

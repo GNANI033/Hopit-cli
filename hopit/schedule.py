@@ -101,13 +101,13 @@ def prompt_confirm(prompt_text: str, default: bool = True) -> bool:
         return res in ("y", "yes")
 
 def get_current_crontab() -> str:
-    res = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    res = subprocess.run(["crontab", "-l"], capture_output=True, text=True, errors="ignore")
     if res.returncode == 0:
         return res.stdout
     return ""
 
 def write_crontab(content: str) -> bool:
-    res = subprocess.run(["crontab", "-"], input=content, text=True, capture_output=True)
+    res = subprocess.run(["crontab", "-"], input=content, text=True, errors="ignore", capture_output=True)
     return res.returncode == 0
 
 def add_schedule(name: str = None, command: str = None, timing: str = None):
@@ -218,7 +218,7 @@ def add_schedule(name: str = None, command: str = None, timing: str = None):
 def remove_schedule(task_name: str = None):
     print("\n--- Remove Scheduled Task ---")
     if IS_WINDOWS:
-        res = subprocess.run(["schtasks", "/query", "/fo", "CSV", "/nh"], capture_output=True, text=True)
+        res = subprocess.run(["schtasks", "/query", "/fo", "CSV", "/nh"], capture_output=True, text=True, errors="ignore")
         if res.returncode != 0:
             print("Failed to list tasks.")
             return
@@ -311,7 +311,7 @@ def interactive_schedule():
 def get_schedule_names() -> list[str]:
     names = []
     if IS_WINDOWS:
-        res = subprocess.run(["schtasks", "/query", "/fo", "CSV", "/nh"], capture_output=True, text=True)
+        res = subprocess.run(["schtasks", "/query", "/fo", "CSV", "/nh"], capture_output=True, text=True, errors="ignore")
         if res.returncode == 0:
             for line in res.stdout.splitlines():
                 if line.strip():

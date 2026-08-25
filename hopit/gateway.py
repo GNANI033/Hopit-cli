@@ -20,7 +20,7 @@ def get_gateway():
             pass
         # fallback to ip route
         try:
-            out = subprocess.run(["ip", "route"], capture_output=True, text=True)
+            out = subprocess.run(["ip", "route"], capture_output=True, text=True, errors="ignore")
             for line in out.stdout.splitlines():
                 if "default via" in line:
                     return line.split("via")[1].strip().split()[0]
@@ -29,7 +29,7 @@ def get_gateway():
 
     elif system == "Darwin":
         try:
-            out = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True)
+            out = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True, errors="ignore")
             for line in out.stdout.splitlines():
                 if "gateway:" in line:
                     return line.split("gateway:")[1].strip()
@@ -38,7 +38,7 @@ def get_gateway():
 
     elif system == "Windows":
         try:
-            out = subprocess.run(["ipconfig"], capture_output=True, text=True)
+            out = subprocess.run(["ipconfig"], capture_output=True, text=True, errors="ignore")
             for line in out.stdout.splitlines():
                 if "Default Gateway" in line and ":" in line:
                     gw = line.split(":", 1)[1].strip()

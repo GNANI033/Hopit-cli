@@ -14,7 +14,7 @@ def main():
         sys.exit(1)
         
     try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(path, "r", encoding="utf-8") as f:
             content = f.read()
             
         _, ext = os.path.splitext(path)

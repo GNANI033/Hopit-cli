@@ -29,14 +29,14 @@ def get_network_interfaces() -> list[str]:
     """Auto-detect active network interfaces on the host system."""
     if IS_WINDOWS:
         try:
-            res = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-NetAdapter | Select-Object -ExpandProperty Name"], capture_output=True, text=True)
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-NetAdapter | Select-Object -ExpandProperty Name"], capture_output=True, text=True, errors="ignore")
             lines = [line.strip() for line in res.stdout.splitlines() if line.strip()]
             return lines if lines else ["Ethernet", "Wi-Fi"]
         except Exception:
             return ["Ethernet", "Wi-Fi"]
     elif IS_MACOS:
         try:
-            res = subprocess.run(["networksetup", "-listallhardwareports"], capture_output=True, text=True)
+            res = subprocess.run(["networksetup", "-listallhardwareports"], capture_output=True, text=True, errors="ignore")
             ifaces = []
             for line in res.stdout.splitlines():
                 if "Device:" in line:
@@ -53,7 +53,7 @@ def get_network_interfaces() -> list[str]:
         except Exception:
             pass
         try:
-            res = subprocess.run(["ip", "-o", "link"], capture_output=True, text=True)
+            res = subprocess.run(["ip", "-o", "link"], capture_output=True, text=True, errors="ignore")
             ifaces = []
             for line in res.stdout.splitlines():
                 parts = line.split(":")
@@ -143,7 +143,7 @@ def parse_firewall_rules() -> list[dict]:
         try:
             cmd = ["powershell", "-NoProfile", "-Command",
                    "Get-NetFirewallRule | Where-Object {$_.Enabled -eq $True -and $_.Direction -eq 'Inbound'} | Select-Object DisplayName, Action, LocalPort | Format-Table -HideTableHeaders"]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
             for line in res.stdout.splitlines():
                 line = line.strip()
                 if not line:
@@ -168,7 +168,7 @@ def parse_firewall_rules() -> list[dict]:
             pass
     elif IS_MACOS:
         try:
-            res = subprocess.run(["sudo", "pfctl", "-sr"], capture_output=True, text=True)
+            res = subprocess.run(["sudo", "pfctl", "-sr"], capture_output=True, text=True, errors="ignore")
             for line in res.stdout.splitlines():
                 line = line.strip()
                 if not line:
@@ -193,7 +193,7 @@ def parse_firewall_rules() -> list[dict]:
     else:
         # Linux
         if shutil.which("firewall-cmd"):
-            res = subprocess.run(["firewall-cmd", "--list-all"], capture_output=True, text=True)
+            res = subprocess.run(["firewall-cmd", "--list-all"], capture_output=True, text=True, errors="ignore")
             zone_match = re.search(r"^(\w+)\s+\(active\)", res.stdout, re.MULTILINE)
             active_zone = zone_match.group(1) if zone_match else "default"
             
@@ -262,7 +262,7 @@ def parse_firewall_rules() -> list[dict]:
                 rule_id += 1
 
         elif shutil.which("ufw"):
-            res = subprocess.run(["ufw", "status", "numbered"], capture_output=True, text=True)
+            res = subprocess.run(["ufw", "status", "numbered"], capture_output=True, text=True, errors="ignore")
             for line in res.stdout.splitlines():
                 match = re.search(r"\[\s*(\d+)\]\s+(.*)", line)
                 if match:
@@ -285,7 +285,7 @@ def parse_firewall_rules() -> list[dict]:
                     rule_id += 1
 
         elif shutil.which("nft"):
-            res = subprocess.run(["nft", "list", "ruleset"], capture_output=True, text=True)
+            res = subprocess.run(["nft", "list", "ruleset"], capture_output=True, text=True, errors="ignore")
             for line in res.stdout.splitlines():
                 line = line.strip()
                 if "dport" in line:
@@ -306,7 +306,7 @@ def parse_firewall_rules() -> list[dict]:
                     rule_id += 1
 
         elif shutil.which("iptables"):
-            res = subprocess.run(["iptables", "-L", "INPUT", "-n", "-v", "--line-numbers"], capture_output=True, text=True)
+            res = subprocess.run(["iptables", "-L", "INPUT", "-n", "-v", "--line-numbers"], capture_output=True, text=True, errors="ignore")
             for line in res.stdout.splitlines():
                 if "dpt:" in line:
                     parts = line.split()
@@ -387,7 +387,7 @@ def ensure_sudo_privileges() -> bool:
 
     try:
         pw = getpass.getpass("🔐 Enter root/sudo password: ")
-        res = subprocess.run(["sudo", "-S", "-v"], input=f"{pw}\n", text=True, capture_output=True)
+        res = subprocess.run(["sudo", "-S", "-v"], input=f"{pw}\n", text=True, errors="ignore", capture_output=True)
         if res.returncode == 0:
             return True
         else:
@@ -438,32 +438,32 @@ def delete_rule_by_id(target_id: int) -> bool:
     if rule_type == "firewalld_rich":
         cmd1 = pfx_list + ["firewall-cmd", "--remove-rich-rule", raw, "--permanent"]
         cmd2 = pfx_list + ["firewall-cmd", "--reload"]
-        res1 = subprocess.run(cmd1, capture_output=True, text=True)
-        res2 = subprocess.run(cmd2, capture_output=True, text=True)
+        res1 = subprocess.run(cmd1, capture_output=True, text=True, errors="ignore")
+        res2 = subprocess.run(cmd2, capture_output=True, text=True, errors="ignore")
         return res1.returncode == 0 and res2.returncode == 0
     elif rule_type == "firewalld_port":
         cmd1 = pfx_list + ["firewall-cmd", "--remove-port", raw, "--permanent"]
         cmd2 = pfx_list + ["firewall-cmd", "--reload"]
-        res1 = subprocess.run(cmd1, capture_output=True, text=True)
-        res2 = subprocess.run(cmd2, capture_output=True, text=True)
+        res1 = subprocess.run(cmd1, capture_output=True, text=True, errors="ignore")
+        res2 = subprocess.run(cmd2, capture_output=True, text=True, errors="ignore")
         return res1.returncode == 0 and res2.returncode == 0
     elif rule_type == "firewalld_service":
         cmd1 = pfx_list + ["firewall-cmd", "--remove-service", raw, "--permanent"]
         cmd2 = pfx_list + ["firewall-cmd", "--reload"]
-        res1 = subprocess.run(cmd1, capture_output=True, text=True)
-        res2 = subprocess.run(cmd2, capture_output=True, text=True)
+        res1 = subprocess.run(cmd1, capture_output=True, text=True, errors="ignore")
+        res2 = subprocess.run(cmd2, capture_output=True, text=True, errors="ignore")
         return res1.returncode == 0 and res2.returncode == 0
     elif rule_type == "ufw":
         cmd = pfx_list + ["ufw", "delete"] + shlex.split(raw)
-        res = subprocess.run(cmd, input="y\n", capture_output=True, text=True)
+        res = subprocess.run(cmd, input="y\n", capture_output=True, text=True, errors="ignore")
         return res.returncode == 0
     elif rule_type == "iptables":
         cmd = pfx_list + ["iptables", "-D", "INPUT"] + shlex.split(raw)
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
         return res.returncode == 0
     elif rule_type == "win":
         cmd = ["powershell", "-NoProfile", "-Command", "& { Remove-NetFirewallRule -DisplayName $args[0] }", raw]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
         return res.returncode == 0
 
     return False
@@ -488,15 +488,15 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
         if action in ("delete", "remove"):
             cmd1 = ["powershell", "-NoProfile", "-Command", "& { Remove-NetFirewallRule -DisplayName $args[0] -ErrorAction SilentlyContinue }", disp_name]
             cmd2 = ["powershell", "-NoProfile", "-Command", "& { Remove-NetFirewallRule -LocalPort $args[0] -ErrorAction SilentlyContinue }", port]
-            res1 = subprocess.run(cmd1, capture_output=True, text=True)
-            res2 = subprocess.run(cmd2, capture_output=True, text=True)
+            res1 = subprocess.run(cmd1, capture_output=True, text=True, errors="ignore")
+            res2 = subprocess.run(cmd2, capture_output=True, text=True, errors="ignore")
             return res1.returncode == 0 and res2.returncode == 0
         else:
             act = "Allow" if action == "allow" else "Block"
             cmd = ["powershell", "-NoProfile", "-Command", 
                    "& { New-NetFirewallRule -DisplayName $args[0] -Direction Inbound -LocalPort $args[1] -Protocol $args[2] -Action $args[3] }",
                    disp_name, port, proto.upper(), act]
-            res = subprocess.run(cmd, capture_output=True, text=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
             return res.returncode == 0
     elif IS_MACOS:
         if action in ("delete", "remove"):
@@ -504,7 +504,7 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
         pf_act = "pass" if action == "allow" else "block"
         rule = f"{pf_act} in proto {proto} from any to any port {port}\n"
         cmd = ["sudo", "pfctl", "-f", "-"]
-        res = subprocess.run(cmd, input=rule, capture_output=True, text=True)
+        res = subprocess.run(cmd, input=rule, capture_output=True, text=True, errors="ignore")
         return res.returncode == 0
     else:
         # Linux Auto-Detection
@@ -516,7 +516,7 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
                 subprocess.run(pfx_list + ["firewall-cmd", "--remove-port=" + port + "/udp", "--permanent"], capture_output=True)
                 subprocess.run(pfx_list + ["firewall-cmd", "--remove-rich-rule=rule family=\"ipv4\" port port=\"" + port + "\" protocol=\"tcp\" accept", "--permanent"], capture_output=True)
                 subprocess.run(pfx_list + ["firewall-cmd", "--remove-rich-rule=rule family=\"ipv4\" port port=\"" + port + "\" protocol=\"tcp\" drop", "--permanent"], capture_output=True)
-                res = subprocess.run(pfx_list + ["firewall-cmd", "--reload"], capture_output=True, text=True)
+                res = subprocess.run(pfx_list + ["firewall-cmd", "--reload"], capture_output=True, text=True, errors="ignore")
                 return res.returncode == 0
             elif action == "allow":
                 if rule_name:
@@ -524,8 +524,8 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
                     cmd1 = pfx_list + ["firewall-cmd", "--add-rich-rule=" + rich_rule, "--permanent"]
                 else:
                     cmd1 = pfx_list + ["firewall-cmd", "--add-port=" + port + "/" + proto, "--permanent"]
-                res1 = subprocess.run(cmd1, capture_output=True, text=True)
-                res2 = subprocess.run(pfx_list + ["firewall-cmd", "--reload"], capture_output=True, text=True)
+                res1 = subprocess.run(cmd1, capture_output=True, text=True, errors="ignore")
+                res2 = subprocess.run(pfx_list + ["firewall-cmd", "--reload"], capture_output=True, text=True, errors="ignore")
                 return res1.returncode == 0 and res2.returncode == 0
             else: # block / deny
                 if rule_name:
@@ -536,8 +536,8 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
                     subprocess.run(pfx_list + ["firewall-cmd", "--remove-port=" + port + "/" + proto, "--permanent"], capture_output=True)
                     rich_rule = f"rule family=\"ipv4\" port port=\"{port}\" protocol=\"{proto}\" comment=\"Block-{port}\" drop"
                     cmd1 = pfx_list + ["firewall-cmd", "--add-rich-rule=" + rich_rule, "--permanent"]
-                res1 = subprocess.run(cmd1, capture_output=True, text=True)
-                res2 = subprocess.run(pfx_list + ["firewall-cmd", "--reload"], capture_output=True, text=True)
+                res1 = subprocess.run(cmd1, capture_output=True, text=True, errors="ignore")
+                res2 = subprocess.run(pfx_list + ["firewall-cmd", "--reload"], capture_output=True, text=True, errors="ignore")
                 return res1.returncode == 0 and res2.returncode == 0
 
         elif shutil.which("ufw"):
@@ -545,19 +545,19 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
                 if port.isdigit():
                     return delete_rule_by_id(int(port))
                 subprocess.run(pfx_list + ["ufw", "delete", "allow", f"{port}/{proto}"], capture_output=True)
-                res = subprocess.run(pfx_list + ["ufw", "delete", "deny", f"{port}/{proto}"], capture_output=True, text=True)
+                res = subprocess.run(pfx_list + ["ufw", "delete", "deny", f"{port}/{proto}"], capture_output=True, text=True, errors="ignore")
                 return res.returncode == 0
             elif action == "allow":
                 cmd = pfx_list + ["ufw", "allow", f"{port}/{proto}"]
                 if rule_name:
                     cmd += ["comment", rule_name]
-                res = subprocess.run(cmd, capture_output=True, text=True)
+                res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
                 return res.returncode == 0
             else:
                 cmd = pfx_list + ["ufw", "deny", f"{port}/{proto}"]
                 if rule_name:
                     cmd += ["comment", rule_name]
-                res = subprocess.run(cmd, capture_output=True, text=True)
+                res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
                 return res.returncode == 0
 
         elif shutil.which("iptables"):
@@ -565,12 +565,12 @@ def run_firewall_rule(action: str, port: str, proto: str = "tcp", iface: str = "
                 if port.isdigit():
                     return delete_rule_by_id(int(port))
                 subprocess.run(pfx_list + ["iptables", "-D", "INPUT", "-p", proto, "--dport", port, "-j", "ACCEPT"], capture_output=True)
-                res = subprocess.run(pfx_list + ["iptables", "-D", "INPUT", "-p", proto, "--dport", port, "-j", "DROP"], capture_output=True, text=True)
+                res = subprocess.run(pfx_list + ["iptables", "-D", "INPUT", "-p", proto, "--dport", port, "-j", "DROP"], capture_output=True, text=True, errors="ignore")
                 return res.returncode == 0
             else:
                 target_act = "ACCEPT" if action == "allow" else "DROP"
                 cmd = pfx_list + ["iptables", "-A", "INPUT", "-p", proto, "--dport", port, "-j", target_act]
-                res = subprocess.run(cmd, capture_output=True, text=True)
+                res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
                 return res.returncode == 0
 
     return False

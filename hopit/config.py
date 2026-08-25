@@ -285,14 +285,14 @@ def detect_package_manager() -> str | None:
 def read_os_pretty_name() -> str:
     if IS_WINDOWS:
         try:
-            proc = subprocess.run(["cmd", "/c", "ver"], capture_output=True, text=True, timeout=2)
+            proc = subprocess.run(["cmd", "/c", "ver"], capture_output=True, text=True, errors="ignore", timeout=2)
             return proc.stdout.strip() or "Windows"
         except Exception:
             return "Windows"
     if IS_MACOS:
         try:
-            name = subprocess.run(["sw_vers", "-productName"],    capture_output=True, text=True, timeout=2).stdout.strip()
-            ver  = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True, timeout=2).stdout.strip()
+            name = subprocess.run(["sw_vers", "-productName"],    capture_output=True, text=True, errors="ignore", timeout=2).stdout.strip()
+            ver  = subprocess.run(["sw_vers", "-productVersion"], capture_output=True, text=True, errors="ignore", timeout=2).stdout.strip()
             return f"{name} {ver}" if name else "macOS"
         except Exception:
             return "macOS"
@@ -333,7 +333,7 @@ def detect_editor() -> str | None:
 def get_git_branch() -> str | None:
     """Return the current git branch name if we are inside a git repository."""
     try:
-        proc = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True, timeout=0.1)
+        proc = subprocess.run(["git", "branch", "--show-current"], capture_output=True, text=True, errors="ignore", timeout=0.1)
         if proc.returncode == 0:
             branch = proc.stdout.strip()
             if branch:

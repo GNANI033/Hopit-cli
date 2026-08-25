@@ -39,7 +39,7 @@ def _run_kubectl_silent(*args: str) -> list[str]:
     try:
         r = subprocess.run(
             ["kubectl"] + list(args),
-            capture_output=True, text=True, timeout=4
+            capture_output=True, text=True, errors="ignore", timeout=4
         )
         if r.returncode != 0:
             return []

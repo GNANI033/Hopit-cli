@@ -38,7 +38,7 @@ def docker_needs_sudo() -> bool:
         _needs_sudo_cache = False
         return False
     try:
-        r = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=2)
+        r = subprocess.run(["docker", "info"], capture_output=True, text=True, errors="ignore", timeout=2)
         if r.returncode == 0:
             _needs_sudo_cache = False
             return False
@@ -55,7 +55,7 @@ def daemon_running() -> bool:
     if not docker_available():
         return False
     try:
-        r = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=3)
+        r = subprocess.run(["docker", "info"], capture_output=True, text=True, errors="ignore", timeout=3)
         if r.returncode == 0:
             return True
         err = (r.stderr or "") + (r.stdout or "")
@@ -73,7 +73,7 @@ def get_docker_compose_cmd() -> list[str]:
             cmd = ["docker", "compose", "version"]
             if docker_needs_sudo():
                 cmd = ["sudo", "-n"] + cmd
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+            r = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", timeout=2)
             if r.returncode == 0:
                 return ["docker", "compose"]
         except Exception:
@@ -138,7 +138,7 @@ def load_docker_containers(all_containers: bool = True) -> list[str]:
         cmd += ["--format", "{{.Names}}"]
         if docker_needs_sudo():
             cmd = ["sudo", "-n"] + cmd
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", timeout=3)
         if r.returncode != 0:
             return []
         return [l.strip() for l in r.stdout.splitlines() if l.strip()]
@@ -155,7 +155,7 @@ def load_docker_images() -> list[str]:
             cmd = ["sudo", "-n"] + cmd
         r = subprocess.run(
             cmd,
-            capture_output=True, text=True, timeout=3
+            capture_output=True, text=True, errors="ignore", timeout=3
         )
         if r.returncode != 0:
             return []
@@ -183,7 +183,7 @@ def load_compose_services() -> list[str]:
         cmd = compose_cmd + ["config", "--services"]
         if docker_needs_sudo():
             cmd = ["sudo", "-n"] + cmd
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", timeout=3)
         if r.returncode == 0:
             return [l.strip() for l in r.stdout.splitlines() if l.strip()]
     except Exception:
@@ -399,7 +399,7 @@ def run_query_or_fallback(cmd: list[str], fallback_cmd: list[str], parse_fn):
         actual_cmd = ["sudo"] + actual_cmd
         actual_fallback = ["sudo"] + actual_fallback
     try:
-        r = subprocess.run(actual_cmd, capture_output=True, text=True, timeout=8)
+        r = subprocess.run(actual_cmd, capture_output=True, text=True, errors="ignore", timeout=8)
         if r.returncode == 0:
             parse_fn(r.stdout)
             return
@@ -414,7 +414,7 @@ def run_action_with_panel(cmd: list[str], success_msg: str, fail_msg: str):
     if docker_needs_sudo():
         actual_cmd = ["sudo"] + actual_cmd
     try:
-        r = subprocess.run(actual_cmd, capture_output=True, text=True)
+        r = subprocess.run(actual_cmd, capture_output=True, text=True, errors="ignore")
         if r.returncode == 0:
             console.print(Panel(success_msg, style="bold green"))
         else:
@@ -429,7 +429,7 @@ def run_docker_logs(container: str):
     if docker_needs_sudo():
         cmd = ["sudo"] + cmd
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="ignore")
         out = (r.stdout or "") + (r.stderr or "")
         if r.returncode == 0:
             console.print(Panel(escape(out.rstrip()), title=f"Logs: {container}", border_style="cyan"))

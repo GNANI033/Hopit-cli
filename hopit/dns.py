@@ -67,11 +67,11 @@ def main():
     
     if shutil.which("dig"):
         try:
-            out_mx = subprocess.run(["dig", "+short", "MX", host], capture_output=True, text=True, timeout=3)
+            out_mx = subprocess.run(["dig", "+short", "MX", host], capture_output=True, text=True, errors="ignore", timeout=3)
             for line in out_mx.stdout.splitlines():
                 if line.strip():
                     mx_records.append(line.strip())
-            out_txt = subprocess.run(["dig", "+short", "TXT", host], capture_output=True, text=True, timeout=3)
+            out_txt = subprocess.run(["dig", "+short", "TXT", host], capture_output=True, text=True, errors="ignore", timeout=3)
             for line in out_txt.stdout.splitlines():
                 if line.strip():
                     txt_records.append(line.strip())
@@ -79,11 +79,11 @@ def main():
             pass
     elif shutil.which("nslookup"):
         try:
-            out_mx = subprocess.run(["nslookup", "-type=MX", host], capture_output=True, text=True, timeout=3)
+            out_mx = subprocess.run(["nslookup", "-type=MX", host], capture_output=True, text=True, errors="ignore", timeout=3)
             for line in out_mx.stdout.splitlines():
                 if "mail exchanger" in line or "MX preference" in line:
                     mx_records.append(line.strip())
-            out_txt = subprocess.run(["nslookup", "-type=TXT", host], capture_output=True, text=True, timeout=3)
+            out_txt = subprocess.run(["nslookup", "-type=TXT", host], capture_output=True, text=True, errors="ignore", timeout=3)
             for line in out_txt.stdout.splitlines():
                 if "text =" in line:
                     txt_records.append(line.strip())

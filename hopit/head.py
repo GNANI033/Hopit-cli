@@ -47,7 +47,7 @@ def main():
             
         try:
             lines = []
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 for _ in range(lines_to_show):
                     line = f.readline()
                     if not line:

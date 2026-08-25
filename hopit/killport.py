@@ -19,7 +19,7 @@ def kill_process_on_port(port: str):
             f"Get-NetTCPConnection -LocalPort {port_num} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"
         ]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            res = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", check=True)
             for line in res.stdout.splitlines():
                 if line.strip().isdigit():
                     pids.add(line.strip())
@@ -28,7 +28,7 @@ def kill_process_on_port(port: str):
     else:
         # Linux or macOS
         try:
-            res = subprocess.run(["lsof", "-i", f":{port_num}", "-t"], capture_output=True, text=True)
+            res = subprocess.run(["lsof", "-i", f":{port_num}", "-t"], capture_output=True, text=True, errors="ignore")
             for line in res.stdout.splitlines():
                 if line.strip().isdigit():
                     pids.add(line.strip())
@@ -37,7 +37,7 @@ def kill_process_on_port(port: str):
             
         if not pids and not IS_MACOS:
             try:
-                res = subprocess.run(["fuser", f"{port_num}/tcp"], capture_output=True, text=True)
+                res = subprocess.run(["fuser", f"{port_num}/tcp"], capture_output=True, text=True, errors="ignore")
                 out = res.stdout.strip() or res.stderr.strip()
                 for token in out.split():
                     clean = token.rstrip("/tcp").strip()
@@ -48,7 +48,7 @@ def kill_process_on_port(port: str):
 
         if not pids and not IS_MACOS:
             try:
-                res = subprocess.run(["ss", "-tlpn", f"sport = :{port_num}"], capture_output=True, text=True)
+                res = subprocess.run(["ss", "-tlpn", f"sport = :{port_num}"], capture_output=True, text=True, errors="ignore")
                 import re
                 for pid in re.findall(r"pid=(\d+)", res.stdout):
                     pids.add(pid)
@@ -68,7 +68,7 @@ def kill_process_on_port(port: str):
             kill_cmd = ["kill", "-9", pid]
             
         try:
-            res = subprocess.run(kill_cmd, capture_output=True, text=True)
+            res = subprocess.run(kill_cmd, capture_output=True, text=True, errors="ignore")
             if res.returncode == 0:
                 print(f"Successfully terminated process PID {pid}.")
             else:

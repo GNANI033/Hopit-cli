@@ -13,7 +13,7 @@ def get_uptime():
                 return str(timedelta(seconds=int(uptime_seconds)))
         elif platform.system() == "Darwin":
             import subprocess
-            out = subprocess.check_output(["sysctl", "-n", "kern.boottime"], text=True)
+            out = subprocess.check_output(["sysctl", "-n", "kern.boottime"], text=True, errors="ignore")
             if "sec =" in out:
                 sec = int(out.split("sec =")[1].split(",")[0].strip())
                 import time
@@ -21,7 +21,7 @@ def get_uptime():
                 return str(timedelta(seconds=int(uptime_seconds)))
         elif platform.system() == "Windows":
             import subprocess
-            out = subprocess.check_output(["wmic", "os", "get", "lastbootuptime"], text=True)
+            out = subprocess.check_output(["wmic", "os", "get", "lastbootuptime"], text=True, errors="ignore")
             lines = [l.strip() for l in out.splitlines() if l.strip()]
             if len(lines) > 1:
                 boot_str = lines[1].split(".")[0]
@@ -44,12 +44,12 @@ def get_cpu_info():
                         return f"{model} ({cores} cores)"
         elif system == "Darwin":
             import subprocess
-            model = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
-            cores = subprocess.check_output(["sysctl", "-n", "hw.ncpu"], text=True).strip()
+            model = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True, errors="ignore").strip()
+            cores = subprocess.check_output(["sysctl", "-n", "hw.ncpu"], text=True, errors="ignore").strip()
             return f"{model} ({cores} cores)"
         elif system == "Windows":
             import subprocess
-            model = subprocess.check_output(["wmic", "cpu", "get", "Name"], text=True).splitlines()
+            model = subprocess.check_output(["wmic", "cpu", "get", "Name"], text=True, errors="ignore").splitlines()
             model = [m.strip() for m in model if m.strip()]
             cores = os.cpu_count()
             if len(model) > 1:
@@ -74,8 +74,8 @@ def get_mem_info():
                 return total, free, used
         elif system == "Darwin":
             import subprocess
-            total = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip())
-            vm = subprocess.check_output(["vm_stat"], text=True).splitlines()
+            total = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True, errors="ignore").strip())
+            vm = subprocess.check_output(["vm_stat"], text=True, errors="ignore").splitlines()
             page_size = 4096
             for line in vm:
                 if "page size of" in line:
@@ -91,7 +91,7 @@ def get_mem_info():
             return total, free, used
         elif system == "Windows":
             import subprocess
-            out = subprocess.check_output(["wmic", "OS", "get", "TotalVisibleMemorySize,FreePhysicalMemory", "/value"], text=True)
+            out = subprocess.check_output(["wmic", "OS", "get", "TotalVisibleMemorySize,FreePhysicalMemory", "/value"], text=True, errors="ignore")
             meminfo = {}
             for line in out.splitlines():
                 if "=" in line:

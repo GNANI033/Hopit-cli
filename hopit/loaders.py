@@ -112,7 +112,7 @@ def _run_lines(argv: list[str], timeout: int) -> list[str]:
         out = subprocess.run(
             argv,
             stdin=subprocess.DEVNULL,
-            capture_output=True, text=True, timeout=timeout
+            capture_output=True, text=True, errors="ignore", timeout=timeout
         )
         return out.stdout.splitlines()
     except Exception:

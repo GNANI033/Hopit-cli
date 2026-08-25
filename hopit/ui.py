@@ -112,7 +112,7 @@ def get_git_completions(words: list[str]) -> list[tuple[str, str]]:
     # 1. Get git status changes
     changed_files = {}
     try:
-        res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, timeout=1)
+        res = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, errors="ignore", timeout=1)
         if res.returncode == 0:
             for line in res.stdout.splitlines():
                 if len(line) > 3:
@@ -135,7 +135,7 @@ def get_git_completions(words: list[str]) -> list[tuple[str, str]]:
     # 2. Get git branch names
     branches = []
     try:
-        res = subprocess.run(["git", "branch", "--format=%(refname:short)"], capture_output=True, text=True, timeout=1)
+        res = subprocess.run(["git", "branch", "--format=%(refname:short)"], capture_output=True, text=True, errors="ignore", timeout=1)
         if res.returncode == 0:
             branches = [line.strip() for line in res.stdout.splitlines() if line.strip()]
     except Exception:
@@ -192,7 +192,7 @@ def get_active_sessions_list() -> list[tuple[str, str]]:
     candidates = []
     if IS_WINDOWS:
         try:
-            proc = subprocess.run(["query", "user"], capture_output=True, text=True)
+            proc = subprocess.run(["query", "user"], capture_output=True, text=True, errors="ignore")
             if proc.returncode == 0:
                 lines = proc.stdout.strip().splitlines()
                 if len(lines) > 1:
@@ -210,7 +210,7 @@ def get_active_sessions_list() -> list[tuple[str, str]]:
             pass
     else:
         try:
-            proc = subprocess.run(["w", "-h"], capture_output=True, text=True)
+            proc = subprocess.run(["w", "-h"], capture_output=True, text=True, errors="ignore")
             if proc.returncode == 0:
                 for line in proc.stdout.splitlines():
                     if line.strip():
@@ -219,7 +219,7 @@ def get_active_sessions_list() -> list[tuple[str, str]]:
                         candidates.append((tty, f"Logon session for {user}"))
         except Exception:
             try:
-                proc = subprocess.run(["who"], capture_output=True, text=True)
+                proc = subprocess.run(["who"], capture_output=True, text=True, errors="ignore")
                 if proc.returncode == 0:
                     for line in proc.stdout.splitlines():
                         parts = line.split()
@@ -229,7 +229,7 @@ def get_active_sessions_list() -> list[tuple[str, str]]:
                 pass
         if shutil.which("tmux"):
             try:
-                proc = subprocess.run(["tmux", "list-sessions"], capture_output=True, text=True)
+                proc = subprocess.run(["tmux", "list-sessions"], capture_output=True, text=True, errors="ignore")
                 if proc.returncode == 0:
                     for line in proc.stdout.splitlines():
                         if ":" in line:
@@ -239,7 +239,7 @@ def get_active_sessions_list() -> list[tuple[str, str]]:
                 pass
         if shutil.which("screen"):
             try:
-                proc = subprocess.run(["screen", "-list"], capture_output=True, text=True)
+                proc = subprocess.run(["screen", "-list"], capture_output=True, text=True, errors="ignore")
                 for line in proc.stdout.splitlines():
                     line_strip = line.strip()
                     if not line_strip or "There is a screen on" in line_strip or "Socket" in line_strip:
@@ -946,7 +946,7 @@ def _run_silent_list(resource: str, namespace: str = "default") -> list[str]:
         r = subprocess.run(
             ["kubectl", "get", resource, "-n", namespace, "--no-headers",
              "-o", "custom-columns=NAME:.metadata.name"],
-            capture_output=True, text=True, timeout=4
+            capture_output=True, text=True, errors="ignore", timeout=4
         )
         return [l.strip() for l in r.stdout.splitlines() if l.strip()]
     except Exception:

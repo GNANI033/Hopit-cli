@@ -4,7 +4,7 @@ from hopit.config import console
 
 def run_git(args):
     try:
-        res = subprocess.run(["git"] + args, capture_output=True, text=True)
+        res = subprocess.run(["git"] + args, capture_output=True, text=True, errors="ignore")
         return res.returncode, res.stdout, res.stderr
     except FileNotFoundError:
         return -1, "", "git command not found on this system."

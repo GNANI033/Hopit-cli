@@ -26,7 +26,7 @@ def main():
     def search_in_file(file_path, display_name):
         nonlocal matches
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 for line_no, line in enumerate(f, 1):
                     if pattern.search(line):
                         snippet = line.strip()

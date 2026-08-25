@@ -18,7 +18,7 @@ def query_dns_record(host, record_type):
     # 1. Try using dig if available
     if shutil.which("dig"):
         try:
-            out = subprocess.run(["dig", "+short", record_type, host], capture_output=True, text=True, timeout=3)
+            out = subprocess.run(["dig", "+short", record_type, host], capture_output=True, text=True, errors="ignore", timeout=3)
             for line in out.stdout.splitlines():
                 line = line.strip()
                 if line:
@@ -31,7 +31,7 @@ def query_dns_record(host, record_type):
     # 2. Try using nslookup if available
     if shutil.which("nslookup"):
         try:
-            out = subprocess.run(["nslookup", f"-type={record_type}", host], capture_output=True, text=True, timeout=3)
+            out = subprocess.run(["nslookup", f"-type={record_type}", host], capture_output=True, text=True, errors="ignore", timeout=3)
             lines = out.stdout.splitlines()
             answer_section = False
             for line in lines:
@@ -157,7 +157,7 @@ def run_ping(target):
         cmd = ["ping", "-c", "3", "-W", "2", target]
         
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        proc = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", timeout=10)
         output = proc.stdout or ""
         
         loss = "100%"
@@ -205,7 +205,7 @@ def run_traceroute(target):
             return ["traceroute/tracepath command not found on host path"]
             
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(cmd, capture_output=True, text=True, errors="ignore", timeout=60)
         hops = []
         for line in proc.stdout.splitlines():
             line_str = line.strip()

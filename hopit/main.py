@@ -138,7 +138,7 @@ def load_shell_aliases(shell: str) -> dict:
         result = subprocess.run(
             [shell, "-c", cmd_str],
             stdin=subprocess.DEVNULL,
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, errors="ignore", timeout=5,
             env={**os.environ, "PS1": "_"}
         )
         aliases = {}
@@ -1807,7 +1807,7 @@ def execute_line(
                 return True
             real_cmd = [sys.executable, "-m", "hopit.cat"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show file", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show file: {e}[/red]")
@@ -1817,7 +1817,7 @@ def execute_line(
                 return True
             real_cmd = [sys.executable, "-m", "hopit.head"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show start", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show start: {e}[/red]")
@@ -1827,21 +1827,21 @@ def execute_line(
                 return True
             real_cmd = [sys.executable, "-m", "hopit.tail"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show end", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show end: {e}[/red]")
         elif subcmd == "tree":
             real_cmd = [sys.executable, "-m", "hopit.tree"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show tree", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show tree: {e}[/red]")
         elif subcmd == "env":
             real_cmd = [sys.executable, "-m", "hopit.env"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show env", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show env: {e}[/red]")
@@ -1905,35 +1905,35 @@ def execute_line(
         elif subcmd == "arp":
             real_cmd = (["arp", "-a"] + subargs) if IS_WINDOWS else ((["arp", "-an"] + subargs) if IS_MACOS else (["ip", "neigh"] + subargs))
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show arp", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show arp: {e}[/red]")
         elif subcmd == "mac":
             real_cmd = [sys.executable, "-m", "hopit.mac"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show mac", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show mac: {e}[/red]")
         elif subcmd == "gateway":
             real_cmd = [sys.executable, "-m", "hopit.gateway"] + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show gateway", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show gateway: {e}[/red]")
         elif subcmd == "ip":
             real_cmd = ip_cmd() + subargs
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show ip", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show ip: {e}[/red]")
         elif subcmd == "route":
             real_cmd = (["route", "print"] + subargs) if IS_WINDOWS else ((["netstat", "-rn"] + subargs) if IS_MACOS else (["ip", "route"] + subargs))
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show route", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show route: {e}[/red]")
@@ -1941,7 +1941,7 @@ def execute_line(
             arg = " ".join(subargs) if subargs else ""
             real_cmd = (["powershell", "-Command", f"Rename-Computer -NewName '{arg}'"] if IS_WINDOWS else ["hostname", arg]) if arg else ["hostname"]
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show hostname", cmd_arg=arg, show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show hostname: {e}[/red]")
@@ -1953,7 +1953,7 @@ def execute_line(
             from hopit.commands import system_logs_cmd
             real_cmd = system_logs_cmd(log_arg)
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="show logs", cmd_arg=log_arg, show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]Error running show logs: {e}[/red]")
@@ -1977,7 +1977,7 @@ def execute_line(
                     real_cmd = [sys.executable, "-m", "hopit.grep"] + subargs
                 
                 try:
-                    proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                    proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                     render_result(proc, label=" ".join(real_cmd), cmd_name=f"find {subcmd}", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
                 except Exception as e:
                     console.print(f"[red]Error running find {subcmd}: {e}[/red]")
@@ -2217,7 +2217,7 @@ def execute_line(
             real_cmd = [sys.executable, "-m", "venv", env_path]
             console.print(f"[cyan]Creating virtual environment at '{env_path}'...[/cyan]")
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 if proc.returncode == 0:
                     console.print(f"[bold green]✓ Virtual environment created:[/bold green] {env_path}")
                     console.print(f"  Run [green]enter venv {env_path}[/green] to activate it.")
@@ -2298,7 +2298,7 @@ def execute_line(
                 console.print("[red]Could not build disk usage command.[/red]")
                 return True
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="usage", show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]disk usage: {e}[/red]")
@@ -2405,7 +2405,7 @@ def execute_line(
                 console.print("[red]Could not build health command for this platform.[/red]")
                 return True
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="health", show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]disk health: {e}[/red]")
@@ -2484,7 +2484,7 @@ def execute_line(
                 return True
             try:
                 console.print(f"[cyan]Formatting {subargs[0]} as {subargs[1]}...[/cyan]")
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="format", show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]disk format: {e}[/red]")
@@ -2531,7 +2531,7 @@ def execute_line(
                 console.print("[red]Could not build unmount command.[/red]")
                 return True
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="unmount", show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]disk unmount: {e}[/red]")
@@ -2595,7 +2595,7 @@ def execute_line(
                 console.print("[red]Could not build mount command for this platform.[/red]")
                 return True
             try:
-                proc = subprocess.run(real_cmd, capture_output=True, text=True)
+                proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
                 render_result(proc, label=" ".join(real_cmd), cmd_name="disk", cmd_arg="mount", show_cmd=show_cmd)
             except Exception as e:
                 console.print(f"[red]disk mount: {e}[/red]")
@@ -2634,7 +2634,7 @@ def execute_line(
             if shutil.which("nmcli"):
                 conn_name = None
                 try:
-                    out = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE", "con", "show"], capture_output=True, text=True)
+                    out = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE", "con", "show"], capture_output=True, text=True, errors="ignore")
                     for line in out.stdout.splitlines():
                         if ":" in line:
                             cname, dev = line.split(":", 1)
@@ -2719,7 +2719,7 @@ def execute_line(
 
         conn_name = None
         try:
-            out = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE", "con", "show"], capture_output=True, text=True)
+            out = subprocess.run(["nmcli", "-t", "-f", "NAME,DEVICE", "con", "show"], capture_output=True, text=True, errors="ignore")
             for line in out.stdout.splitlines():
                 if ":" in line:
                     cname, dev = line.split(":", 1)
@@ -2808,7 +2808,7 @@ def execute_line(
         return True
 
     try:
-        proc = subprocess.run(real_cmd, capture_output=True, text=True)
+        proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
     except FileNotFoundError:
         console.print(f"[red]'{real_cmd[0]}' not found on this system.[/red]")
         return True

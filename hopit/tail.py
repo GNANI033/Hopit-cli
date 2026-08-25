@@ -46,7 +46,7 @@ def main():
             continue
             
         try:
-            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
             
             tail_lines = lines[-lines_to_show:] if lines_to_show > 0 else []

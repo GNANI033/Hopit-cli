@@ -37,7 +37,7 @@ def search_text_or_file(query: str, search_path: str = "."):
             
             # Check content match for text files
             try:
-                with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(full_path, "r", encoding="utf-8") as f:
                     for line_no, line in enumerate(f, 1):
                         if pattern.search(line):
                             snippet = line.strip()

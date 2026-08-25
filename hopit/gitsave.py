@@ -11,13 +11,13 @@ def main():
     commit_message = " ".join(sys.argv[1:])
 
     console.print("[bold cyan]Step 1/3: Staging all changes...[/bold cyan]")
-    res = subprocess.run(["git", "add", "."], capture_output=True, text=True)
+    res = subprocess.run(["git", "add", "."], capture_output=True, text=True, errors="ignore")
     if res.returncode != 0:
         console.print(f"[bold red]Failed to stage changes:[/bold red] {res.stderr.strip() or res.stdout.strip()}")
         sys.exit(res.returncode)
 
     console.print(f"[bold cyan]Step 2/3: Committing with message: '{commit_message}'...[/bold cyan]")
-    res = subprocess.run(["git", "commit", "-m", commit_message], capture_output=True, text=True)
+    res = subprocess.run(["git", "commit", "-m", commit_message], capture_output=True, text=True, errors="ignore")
     if res.returncode != 0:
         # If there are no changes to commit, print success/notice and proceed or exit
         output = res.stderr.strip() or res.stdout.strip()
@@ -31,7 +31,7 @@ def main():
             console.print(res.stdout.strip())
 
     console.print("[bold cyan]Step 3/3: Pushing to remote...[/bold cyan]")
-    res = subprocess.run(["git", "push"], capture_output=True, text=True)
+    res = subprocess.run(["git", "push"], capture_output=True, text=True, errors="ignore")
     if res.returncode != 0:
         console.print(f"[bold red]Failed to push changes:[/bold red] {res.stderr.strip() or res.stdout.strip()}")
         sys.exit(res.returncode)
