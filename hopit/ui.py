@@ -1190,6 +1190,7 @@ def render_result(
     cmd_name: str = None,
     cmd_arg: str = None,
     show_cmd: bool = False,
+    use_panel: bool = True,
 ):
     output = (proc.stdout or "") + (proc.stderr or "")
     output = output.rstrip("\n")
@@ -1249,7 +1250,12 @@ def render_result(
             content = Text(content_str, style="bold red")
 
     title = label if show_cmd else None
-    console.print(Panel(content, title=title, border_style=border, expand=False))
+    if use_panel:
+        console.print(Panel(content, title=title, border_style=border, expand=False))
+    else:
+        if title:
+            console.print(f"[dim]{title}[/dim]")
+        console.print(content)
 
 
 def print_help(commands: dict, manager: str | None, filter_term: str | None = None):

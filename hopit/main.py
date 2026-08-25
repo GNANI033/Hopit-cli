@@ -1808,7 +1808,7 @@ def execute_line(
             real_cmd = [sys.executable, "-m", "hopit.cat"] + subargs
             try:
                 proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
-                render_result(proc, label=" ".join(real_cmd), cmd_name="show file", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show file", cmd_arg=" ".join(subargs), show_cmd=show_cmd, use_panel=False)
             except Exception as e:
                 console.print(f"[red]Error running show file: {e}[/red]")
         elif subcmd == "start":
@@ -1818,7 +1818,7 @@ def execute_line(
             real_cmd = [sys.executable, "-m", "hopit.head"] + subargs
             try:
                 proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
-                render_result(proc, label=" ".join(real_cmd), cmd_name="show start", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show start", cmd_arg=" ".join(subargs), show_cmd=show_cmd, use_panel=False)
             except Exception as e:
                 console.print(f"[red]Error running show start: {e}[/red]")
         elif subcmd == "end":
@@ -1828,14 +1828,14 @@ def execute_line(
             real_cmd = [sys.executable, "-m", "hopit.tail"] + subargs
             try:
                 proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
-                render_result(proc, label=" ".join(real_cmd), cmd_name="show end", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show end", cmd_arg=" ".join(subargs), show_cmd=show_cmd, use_panel=False)
             except Exception as e:
                 console.print(f"[red]Error running show end: {e}[/red]")
         elif subcmd == "tree":
             real_cmd = [sys.executable, "-m", "hopit.tree"] + subargs
             try:
                 proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
-                render_result(proc, label=" ".join(real_cmd), cmd_name="show tree", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+                render_result(proc, label=" ".join(real_cmd), cmd_name="show tree", cmd_arg=" ".join(subargs), show_cmd=show_cmd, use_panel=False)
             except Exception as e:
                 console.print(f"[red]Error running show tree: {e}[/red]")
         elif subcmd == "env":
@@ -1978,7 +1978,7 @@ def execute_line(
                 
                 try:
                     proc = subprocess.run(real_cmd, capture_output=True, text=True, errors="ignore")
-                    render_result(proc, label=" ".join(real_cmd), cmd_name=f"find {subcmd}", cmd_arg=" ".join(subargs), show_cmd=show_cmd)
+                    render_result(proc, label=" ".join(real_cmd), cmd_name=f"find {subcmd}", cmd_arg=" ".join(subargs), show_cmd=show_cmd, use_panel=False)
                 except Exception as e:
                     console.print(f"[red]Error running find {subcmd}: {e}[/red]")
                 return True
@@ -2816,7 +2816,7 @@ def execute_line(
         console.print("[red]Command timed out.[/red]")
         return True
 
-    render_result(proc, label=" ".join(real_cmd), cmd_name=name, cmd_arg=arg, show_cmd=show_cmd)
+    render_result(proc, label=" ".join(real_cmd), cmd_name=name, cmd_arg=arg, show_cmd=show_cmd, use_panel=getattr(cmd, "use_panel", True))
     return True
 
 
