@@ -21,6 +21,253 @@ MIN_ARG_PREFIX_CHARS = {
     "path": 0,
 }
 
+# ── Smart argument type map for system commands ──────────────────────────
+# Keys are command names; values are lists of argument "slots" in order.
+# Supported types: path, dir, user, group, service, process, signal_or_pid,
+# host, env, systemctl_sub, ip_sub, pip_sub, npm_sub, cargo_sub, go_sub, none
+SYSTEM_CMD_ARG_TYPES = {
+    # ── File viewers / editors ──
+    "more": ["path"], "bat": ["path"], "view": ["path"],
+    "nano": ["path"], "vim": ["path"], "vi": ["path"], "nvim": ["path"],
+    "emacs": ["path"], "micro": ["path"], "code": ["path"], "subl": ["path"],
+    "gedit": ["path"], "kate": ["path"], "notepad": ["path"],
+    # ── File operations ──
+    "tac": ["path"], "wc": ["path"], "sort": ["path"], "uniq": ["path"],
+    "cut": ["path"], "paste": ["path"], "sed": ["none", "path"],
+    "awk": ["none", "path"], "file": ["path"], "stat": ["path"],
+    "md5sum": ["path"], "sha256sum": ["path"], "sha1sum": ["path"],
+    "strings": ["path"], "xxd": ["path"], "od": ["path"], "hexdump": ["path"],
+    "diff": ["path", "path"], "patch": ["path"], "cmp": ["path", "path"],
+    "comm": ["path", "path"], "tee": ["path"], "shred": ["path"],
+    "truncate": ["path"], "split": ["path"], "nl": ["path"], "rev": ["path"],
+    "expand": ["path"], "unexpand": ["path"], "column": ["path"],
+    "fmt": ["path"], "pr": ["path"],
+    # ── Path utilities ──
+    "readlink": ["path"], "realpath": ["path"], "basename": ["path"],
+    "dirname": ["path"], "ln": ["path", "path"],
+    "exa": ["path"], "eza": ["path"], "lsd": ["path"],
+    # ── Directory operations ──
+    "pushd": ["dir"], "rmdir": ["dir"],
+    # ── Archive / compression ──
+    "tar": ["none", "path"], "gzip": ["path"], "gunzip": ["path"],
+    "bzip2": ["path"], "bunzip2": ["path"], "xz": ["path"], "unxz": ["path"],
+    "zip": ["path", "path"], "unzip": ["path"], "7z": ["none", "path"],
+    "zstd": ["path"], "lz4": ["path"],
+    # ── Search ──
+    "rg": ["none", "path"], "ag": ["none", "path"],
+    # ── Permissions / ownership ──
+    "chattr": ["none", "path"], "lsattr": ["path"],
+    "getfacl": ["path"], "setfacl": ["none", "path"],
+    # ── User management ──
+    "su": ["user"], "chage": ["user"], "finger": ["user"],
+    "id": ["user"], "groups": ["user"], "last": ["user"], "lastb": ["user"],
+    # ── Process management ──
+    "kill": ["signal_or_pid"], "killall": ["process"], "pgrep": ["process"],
+    "lsof": ["path"], "fuser": ["path"],
+    # ── Service management ──
+    "systemctl": ["systemctl_sub"], "service": ["service", "none"],
+    # ── Network ──
+    "ping6": ["host"], "tracepath": ["host"], "mtr": ["host"],
+    "dig": ["host"], "host": ["host"], "nmap": ["host"],
+    "nc": ["host"], "netcat": ["host"], "telnet": ["host"],
+    "ftp": ["host"], "whois": ["host"], "rsync": ["path", "path"],
+    "ip": ["ip_sub"],
+    # ── Disk / filesystem ──
+    "umount": ["dir"], "df": ["path"], "du": ["path"],
+    "fdisk": ["path"], "mkfs": ["path"], "fsck": ["path"],
+    "hdparm": ["path"],
+    # ── Package managers ──
+    "pip": ["pip_sub"], "pip3": ["pip_sub"],
+    "npm": ["npm_sub"], "yarn": ["npm_sub"],
+    "cargo": ["cargo_sub"], "go": ["go_sub"],
+    # ── Development tools ──
+    "python": ["path"], "python3": ["path"], "node": ["path"],
+    "ruby": ["path"], "perl": ["path"], "javac": ["path"],
+    "gcc": ["path"], "g++": ["path"], "clang": ["path"],
+    "cmake": ["path"], "rustc": ["path"], "ansible": ["path"],
+    # ── Miscellaneous ──
+    "export": ["env"], "unset": ["env"], "printenv": ["env"],
+    "source": ["path"], ".": ["path"],
+}
+
+
+def _get_system_cmd_completions(cmd_name: str, words: list, word: str) -> list[tuple[str, str]] | None:
+    """Return argument completions for a known system command pattern.
+
+    Returns a list of (completion_text, description) tuples, or None if
+    the command is not in our smart-arg map (caller should fall through).
+    """
+    slots = SYSTEM_CMD_ARG_TYPES.get(cmd_name)
+    if slots is None:
+        return None
+
+    arg_index = len(words) - 2  # 0-based index of which argument we're on
+    if arg_index < 0:
+        return []
+
+    # Determine the slot type for this argument position
+    if arg_index < len(slots):
+        slot = slots[arg_index]
+    elif slots:
+        slot = slots[-1]  # repeat last slot for extra args
+    else:
+        return []
+
+    if slot == "path":
+        from hopit.loaders import load_path_entries
+        paths = load_path_entries(word)
+        return [(p, "📁 folder" if os.path.isdir(p) else "📄 file") for p in paths]
+    elif slot == "dir":
+        from hopit.loaders import load_path_entries
+        paths = load_path_entries(word)
+        return [(p, "📁 folder") for p in paths if p.endswith("/") or p.endswith("\\") or os.path.isdir(p)]
+    elif slot == "user":
+        from hopit.loaders import load_users
+        return [(u, "👤 user") for u in load_users()]
+    elif slot == "group":
+        from hopit.loaders import load_groups
+        return [(g, "👥 group") for g in load_groups()]
+    elif slot == "service":
+        from hopit.loaders import load_service_names
+        return [(s, "⚙️ service") for s in load_service_names()]
+    elif slot == "process":
+        try:
+            if IS_WINDOWS:
+                out = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     "Get-Process | Select-Object -ExpandProperty Name -Unique | Sort-Object"],
+                    capture_output=True, text=True, timeout=3).stdout
+            else:
+                out = subprocess.run(["ps", "-eo", "comm=", "--no-headers"],
+                    capture_output=True, text=True, timeout=2).stdout
+            names = sorted(set(l.strip().split("/")[-1] for l in out.splitlines() if l.strip()))
+            return [(n, "🔄 process") for n in names]
+        except Exception:
+            return []
+    elif slot == "signal_or_pid":
+        if word.startswith("-"):
+            return [
+                ("-TERM", "Graceful termination (default)"), ("-KILL", "Force kill"),
+                ("-HUP", "Hangup / reload config"), ("-INT", "Interrupt (Ctrl+C)"),
+                ("-QUIT", "Quit with core dump"), ("-STOP", "Pause process"),
+                ("-CONT", "Resume paused process"), ("-9", "SIGKILL"), ("-15", "SIGTERM"),
+            ]
+        try:
+            if not IS_WINDOWS:
+                lines = subprocess.run(["ps", "-eo", "pid,comm", "--no-headers"],
+                    capture_output=True, text=True, timeout=2).stdout.splitlines()
+                results = []
+                for l in lines:
+                    parts = l.strip().split(None, 1)
+                    if len(parts) == 2:
+                        results.append((parts[0], f"🔄 {parts[1]}"))
+                return results[:MAX_ARG_COMPLETIONS]
+        except Exception:
+            pass
+        return []
+    elif slot == "host":
+        hosts = [
+            ("localhost", "Local machine (127.0.0.1)"), ("127.0.0.1", "IPv4 loopback"),
+            ("::1", "IPv6 loopback"), ("8.8.8.8", "Google DNS"), ("1.1.1.1", "Cloudflare DNS"),
+        ]
+        try:
+            if not IS_WINDOWS:
+                with open("/etc/hosts") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            for h in line.split()[1:]:
+                                if h not in [e[0] for e in hosts]:
+                                    hosts.append((h, "📋 /etc/hosts"))
+        except Exception:
+            pass
+        try:
+            kh = os.path.expanduser("~/.ssh/known_hosts")
+            if os.path.exists(kh):
+                with open(kh) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith(("#", "|")):
+                            h = line.split()[0].split(",")[0]
+                            if h and h not in [e[0] for e in hosts]:
+                                hosts.append((h, "🔑 SSH known host"))
+        except Exception:
+            pass
+        return hosts
+    elif slot == "env":
+        return [(k, f"= {v[:40]}..." if len(v) > 40 else f"= {v}") for k, v in sorted(os.environ.items())]
+    elif slot == "systemctl_sub":
+        if arg_index == 0:
+            return [
+                ("start", "Start a service"), ("stop", "Stop a service"),
+                ("restart", "Restart a service"), ("reload", "Reload service config"),
+                ("status", "Show service status"), ("enable", "Enable at boot"),
+                ("disable", "Disable at boot"), ("is-active", "Check if active"),
+                ("is-enabled", "Check if enabled"), ("list-units", "List loaded units"),
+                ("list-unit-files", "List installed unit files"),
+                ("daemon-reload", "Reload unit files"), ("cat", "Show unit file"),
+                ("mask", "Prevent service from starting"), ("unmask", "Remove mask"),
+            ]
+        sub = words[1].lower() if len(words) > 1 else ""
+        if sub in ("start", "stop", "restart", "reload", "status", "enable",
+                    "disable", "is-active", "is-enabled", "cat", "mask", "unmask"):
+            from hopit.loaders import load_service_names
+            return [(s, "⚙️ service") for s in load_service_names()]
+        return []
+    elif slot == "ip_sub":
+        if arg_index == 0:
+            return [
+                ("addr", "Show/manage IP addresses"), ("link", "Show/manage interfaces"),
+                ("route", "Show/manage routing table"), ("neigh", "Show/manage ARP table"),
+                ("rule", "Show/manage routing rules"), ("monitor", "Monitor netlink"),
+            ]
+        return []
+    elif slot == "pip_sub":
+        if arg_index == 0:
+            return [
+                ("install", "Install a package"), ("uninstall", "Uninstall a package"),
+                ("list", "List installed packages"), ("show", "Show package info"),
+                ("freeze", "Output requirements format"), ("check", "Verify dependencies"),
+                ("download", "Download packages"), ("cache", "Manage pip cache"),
+            ]
+        return []
+    elif slot == "npm_sub":
+        if arg_index == 0:
+            return [
+                ("install", "Install packages"), ("uninstall", "Remove a package"),
+                ("update", "Update packages"), ("list", "List installed"),
+                ("run", "Run a script"), ("start", "Start the project"),
+                ("test", "Run tests"), ("build", "Build the project"),
+                ("init", "Create package.json"), ("audit", "Security audit"),
+                ("outdated", "Check for outdated"), ("publish", "Publish to registry"),
+            ]
+        return []
+    elif slot == "cargo_sub":
+        if arg_index == 0:
+            return [
+                ("build", "Compile the package"), ("run", "Run a binary"),
+                ("test", "Run tests"), ("bench", "Run benchmarks"),
+                ("check", "Check for errors"), ("clean", "Remove build artifacts"),
+                ("doc", "Build documentation"), ("new", "Create new package"),
+                ("init", "Init in current dir"), ("add", "Add a dependency"),
+                ("remove", "Remove a dependency"), ("update", "Update dependencies"),
+                ("fmt", "Format source code"), ("clippy", "Run linter"),
+            ]
+        return []
+    elif slot == "go_sub":
+        if arg_index == 0:
+            return [
+                ("build", "Compile packages"), ("run", "Compile and run"),
+                ("test", "Run tests"), ("get", "Download packages"),
+                ("mod", "Module maintenance"), ("fmt", "Format source code"),
+                ("vet", "Report suspicious constructs"), ("install", "Install packages"),
+                ("doc", "Show documentation"), ("env", "Print Go env info"),
+                ("version", "Print Go version"),
+            ]
+        return []
+    elif slot == "none":
+        return []
+    return []
 
 
 def resolve_command(all_names, token: str):
@@ -954,9 +1201,10 @@ def _run_silent_list(resource: str, namespace: str = "default") -> list[str]:
 
 
 class LazyCompleter(Completer):
-    def __init__(self, commands: dict, aliases: dict = None):
+    def __init__(self, commands: dict, aliases: dict = None, system_commands_getter=None):
         self.commands = commands
         self.aliases = aliases or {}
+        self.system_commands_getter = system_commands_getter
         aliases_to_hide = {
             "permissions", "drive", "compress", "ps", "where", "findcommand",
             "adduser", "deluser", "addgroup", "delgroup", "viewstart", "viewend",
@@ -1142,7 +1390,30 @@ class LazyCompleter(Completer):
                     yield Completion(match, start_position=-len(word), display_meta=meta)
                 return
 
+            # ── Fallback: smart argument completion for system commands ──
+            # If the command wasn't handled above but is in our system command
+            # arg-type map, provide intelligent argument completions.
+            sys_cmd_candidates = _get_system_cmd_completions(head, words, word)
+            if sys_cmd_candidates is None and resolved:
+                sys_cmd_candidates = _get_system_cmd_completions(resolved, words, word)
+            if sys_cmd_candidates is not None:
+                matches = []
+                for cand, meta in sys_cmd_candidates:
+                    if _match_start(cand, word):
+                        matches.append((cand, meta))
+                        if len(matches) >= MAX_ARG_COMPLETIONS:
+                            break
+                for match, meta in matches:
+                    yield Completion(match, start_position=-len(word), display_meta=meta)
+                return
+
         matches = completion_matches(text, self.commands, self.all_names)
+        
+        sys_cmds = self.system_commands_getter() if self.system_commands_getter else {}
+        if len(words) == 1 and word:
+            for sc_name in sys_cmds:
+                if sc_name.startswith(word.lower()) and sc_name not in matches and sc_name not in self.commands:
+                    matches.append(sc_name)
 
         # Detect if we're completing a path-type argument
         arg_kind = None
@@ -1165,7 +1436,13 @@ class LazyCompleter(Completer):
             "clone": "Clone a repository into a new directory",
         }
 
+        max_len = max((len(m) for m in matches), default=0)
+
         for match in matches:
+            display_text = match
+            completion_text = match
+            is_native = False
+            
             if len(words) > 1:
                 # Completing an argument
                 if arg_kind == "path":
@@ -1175,13 +1452,36 @@ class LazyCompleter(Completer):
                         meta = "📄 file"
                 elif arg_kind == "git_subcommand":
                     meta = git_subcommand_descs.get(match.lower(), "git subcommand")
+                    completion_text = match + " "
+                elif arg_kind and arg_kind.endswith("_subcommand"):
+                    meta = arg_kind.replace("_", " ")
+                    completion_text = match + " "
                 else:
                     meta = arg_kind if arg_kind else ""
             else:
                 # Completing a command name
                 cmd = self.commands.get(match)
-                meta = cmd.desc if cmd else BUILTIN_DESCRIPTIONS.get(match, "")
-            yield Completion(match, start_position=-len(word), display_meta=meta)
+                if cmd:
+                    meta = cmd.desc
+                    if not getattr(cmd, "is_universal", True):
+                        is_native = True
+                elif match in BUILTIN_DESCRIPTIONS:
+                    meta = BUILTIN_DESCRIPTIONS[match]
+                elif match in sys_cmds:
+                    meta = sys_cmds[match]
+                    is_native = True
+                else:
+                    meta = ""
+                completion_text = match + " "
+                
+            item_style = "class:native-cmd" if is_native else ""
+            if meta:
+                padded_display = display_text.ljust(max_len + 2)
+                full_display = f"{padded_display}│ {meta}"
+            else:
+                full_display = display_text
+                
+            yield Completion(completion_text, start_position=-len(word), display=full_display, display_meta=None, style=item_style)
 
 
 def render_result(

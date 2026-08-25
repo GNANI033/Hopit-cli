@@ -91,6 +91,17 @@ def create_prompt_style(theme: dict) -> Style:
         "time": f"bg:{theme['time']} fg:{get_fg(theme['time'])} bold",
         "time_sep": f"fg:{theme['time']}",
         "bottom-toolbar": "bg:#222222 #aaaaaa",
+        
+        # Autocomplete Dropdown Styles (Theme-Aware)
+        "completion-menu": f"bg:{theme['cwd']} fg:{get_fg(theme['cwd'])}",
+        "completion-menu.completion": f"bg:{theme['user']} fg:{get_fg(theme['user'])}",
+        "completion-menu.completion.current": f"bg:{theme['hopit']} fg:{get_fg(theme['hopit'])}",
+        "completion-menu.meta": f"bg:{theme['cwd']} fg:{get_fg(theme['cwd'])}",
+        "completion-menu.meta.completion.current": f"bg:{theme['hopit']} fg:{get_fg(theme['hopit'])}",
+        
+        # Native Command overrides
+        "completion-menu.completion native-cmd": f"bg:{theme.get('text', '#1e2d3d')} fg:{theme['cwd']}",
+        "completion-menu.completion.current native-cmd": f"bg:{theme['border']} fg:{get_fg(theme['border'])}",
     })
 
 
@@ -2856,6 +2867,9 @@ def main():
 
     users_holder = BackgroundNames(load_users, start_immediately=False)
     groups_holder = BackgroundNames(load_groups, start_immediately=False)
+    
+    from hopit.loaders import load_system_commands
+    system_commands_holder = BackgroundNames(load_system_commands, start_immediately=False)
 
     names = {
         "service": services_holder.get,
@@ -2869,7 +2883,7 @@ def main():
 
     commands = build_commands(manager, names)
     all_names = list(commands.keys()) + list(BUILTIN_DESCRIPTIONS.keys())
-    completer = LazyCompleter(commands, aliases)
+    completer = LazyCompleter(commands, aliases, system_commands_getter=system_commands_holder.get)
 
     from prompt_toolkit.key_binding import KeyBindings
     from prompt_toolkit.filters import has_completions
@@ -2909,6 +2923,7 @@ def main():
         complete_while_typing=True,
         bottom_toolbar=bottom_toolbar,
         key_bindings=kb,
+        mouse_support=False,
     )
 
     theme = get_active_theme()

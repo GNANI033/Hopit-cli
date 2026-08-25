@@ -1562,7 +1562,7 @@ def build_commands(manager: str | None, names: dict) -> dict:
     native_cmds = {
         "ls", "cp", "mv", "rm", "mkdir", "ps", "pkill", "ping", "traceroute",
         "dns", "nslookup", "route", "arp", "netstat", "curl", "wget", "ssh",
-        "scp", "sftp", "sqlite", "git", "gitsave", "chmod", "chown", "chgrp",
+        "scp", "sftp", "sqlite", "git", "chmod", "chown", "chgrp",
         "useradd", "adduser", "userdel", "deluser", "usermod", "passwd",
         "groupadd", "addgroup", "groupdel", "delgroup", "kubectl",
         "docker-compose", "compose", "crontab", "schtasks", "install", "uninstall", "update",

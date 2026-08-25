@@ -597,6 +597,7 @@ class BackgroundNames:
         self._loader = loader
         self._started = False
         self._lock = threading.Lock()
+        self._thread = None
         if start_immediately:
             self.start()
 
@@ -605,10 +606,13 @@ class BackgroundNames:
             if self._started:
                 return
             self._started = True
-            threading.Thread(target=self._load, daemon=True).start()
+            self._thread = threading.Thread(target=self._load, daemon=True)
+            self._thread.start()
 
     def get(self) -> list[str]:
         self.start()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=3)
         return self.names
 
     def _load(self):
@@ -616,3 +620,51 @@ class BackgroundNames:
             self.names = self._loader()
         except Exception:
             self.names = []
+
+def load_system_commands() -> dict[str, str]:
+    """Scan PATH for all executables and enrich with descriptions."""
+    cmds = {}
+    if IS_WINDOWS:
+        path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+        exts = (".exe", ".bat", ".cmd", ".ps1")
+        for d in path_dirs:
+            if os.path.isdir(d):
+                try:
+                    for f in os.listdir(d):
+                        if f.lower().endswith(exts):
+                            name = os.path.splitext(f)[0].lower()
+                            if name not in cmds:
+                                cmds[name] = "System command"
+                except OSError:
+                    pass
+        return cmds
+
+    # Linux / macOS
+    path_dirs = os.environ.get("PATH", "").split(os.pathsep)
+    for d in path_dirs:
+        if os.path.isdir(d):
+            try:
+                for f in os.listdir(d):
+                    if not f.startswith(".") and os.access(os.path.join(d, f), os.X_OK):
+                        if f not in cmds:
+                            cmds[f] = "System command"
+            except OSError:
+                pass
+    
+    try:
+        proc = subprocess.run(["apropos", "-s", "1,8", "."], capture_output=True, text=True, timeout=2)
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                parts = line.split(" - ", 1)
+                if len(parts) == 2:
+                    name_part = parts[0].strip()
+                    desc = parts[1].strip()
+                    name = name_part.split()[0].strip()
+                    if name in cmds:
+                        if len(desc) > 60:
+                            desc = desc[:57] + "..."
+                        cmds[name] = desc
+    except Exception:
+        pass
+        
+    return cmds
