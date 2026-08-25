@@ -54,42 +54,33 @@ Managing multi-OS server environments, local dev setups, and firewalls requires 
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/Hopit-cli.git
+   git clone https://github.com/GNANI033/Hopit-cli.git
    cd Hopit-cli
    ```
 
-2. **Install Python dependencies:**
+2. **Run the installation script:**
+   The `install.sh` script automatically detects your OS, creates a Python virtual environment, installs all dependencies, and creates a global terminal shortcut.
    ```bash
-   pip install -r requirements.txt
+   bash install.sh
    ```
 
-3. **Run Hopit-CLI:**
+3. **Launch Hopit-CLI:**
    ```bash
-   python3 hopit-cli.py
-   ```
-   *Optional: Make it executable system-wide:*
-   ```bash
-   chmod +x hopit-cli.py
-   sudo ln -s $(pwd)/hopit-cli.py /usr/local/bin/hopit-cli
+   hopit-cli
    ```
 
 ---
 
 ### 🪟 Windows Setup
 
-On Windows, Hopit-CLI includes a batch installer for automated setup.
+On Windows, Hopit-CLI is distributed as a completely portable, standalone `.exe` installer built with Inno Setup. It requires no external Python dependencies.
 
-1. **Clone or download the repository.**
-2. **Run the installation batch file:**
-   Double-click `install-windows.bat` or run it from Command Prompt / PowerShell:
-   ```cmd
-   install-windows.bat
-   ```
+1. **Download the Installer:**
+   Download the latest `Hopit_Setup.exe` from the Releases tab (or build it yourself using Inno Setup).
+2. **Run Setup:**
+   Double-click the installer. It will automatically bundle the isolated Python environment and add Hopit to your Start Menu and PATH.
 3. **Launch Hopit-CLI:**
-   ```cmd
-   hopit-cli
-   ```
-   *(Or execute directly with `python hopit-cli.py`)*
+   Simply search for "Hopit" in your Start Menu or type `hopit-cli` in your Command Prompt/PowerShell!
 
 ---
 
@@ -181,8 +172,9 @@ Hopit-cli/
 │   └── download.py       # File downloader helper
 ├── COMMANDS_ROADMAP.md   # Complete command inventory and phase-by-phase roadmap
 ├── hopit-cli.py          # Main executable entry point
-├── install-windows.bat   # Windows automated batch installer
-├── install-windows.ps1   # Windows PowerShell setup script
+├── install.sh            # Linux & macOS automated installer
+├── hopit_installer.iss   # Windows Inno Setup deployment script
+├── HopitLauncher.cs      # Native C# UAC elevation launcher for Windows
 └── requirements.txt      # Python package dependencies (prompt_toolkit, psutil, rich)
 ```
 
