@@ -14,6 +14,9 @@ if script_dir not in existing_pythonpath.split(os.pathsep):
     else:
         os.environ["PYTHONPATH"] = script_dir
 
+# Force UTF-8 encoding globally to prevent Windows UnicodeEncodeError crashes in child processes
+os.environ["PYTHONUTF8"] = "1"
+
 from hopit.main import main
 
 if __name__ == "__main__":
