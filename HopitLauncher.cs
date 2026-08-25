@@ -16,13 +16,13 @@ namespace HopitLauncher
             string pythonPath = Path.Combine(baseDir, "python", "python.exe");
             string scriptPath = Path.Combine(baseDir, "src", "hopit-cli.py");
 
-            string srcDir = Path.Combine(baseDir, "src");
+            string userHome = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
-                // UAC ignores WorkingDirectory, so we force cmd to 'cd /d' to the src folder first!
-                Arguments = "/c \"cd /d \"" + srcDir + "\" && \"" + pythonPath + "\" \"" + scriptPath + "\" & echo. & echo Program exited. & pause \"",
+                // Change to User Home directory, enable UTF-8 for icons (chcp 65001), then run python
+                Arguments = "/c \"cd /d \"" + userHome + "\" && chcp 65001 >nul && \"" + pythonPath + "\" \"" + scriptPath + "\" & echo. & echo Program exited. & pause \"",
                 UseShellExecute = true,
                 Verb = "runas"
             };

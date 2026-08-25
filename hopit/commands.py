@@ -533,7 +533,9 @@ def system_disable_cmd(svc: str) -> list[str]:
 
 
 def firewall_cmd(arg: str) -> list[str]:
-    return [sys.executable, "-m", "hopit.firewall"] + (shlex.split(arg) if arg else [])
+    src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    inline_script = f"import sys; sys.path.insert(0, r'{src_dir}'); import runpy; runpy.run_module('hopit.firewall', run_name='__main__')"
+    return [sys.executable, "-c", inline_script] + (shlex.split(arg) if arg else [])
 
 
 def disk_cmd(arg: str) -> list[str]:
