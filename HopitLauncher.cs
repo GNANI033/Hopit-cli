@@ -18,12 +18,10 @@ namespace HopitLauncher
 
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
-                // Launch via cmd.exe /k to KEEP the window open so we can see any errors
                 FileName = "cmd.exe",
-                Arguments = $"/k \"\"{pythonPath}\" \"{scriptPath}\"\"",
-                // UseShellExecute = true is REQUIRED to trigger UAC and open a new terminal window
+                // /c runs the command and then we explicitly call 'pause' so the window stays open forever
+                Arguments = $"/c \" \"{pythonPath}\" \"{scriptPath}\" & echo. & echo Program exited. & pause \"",
                 UseShellExecute = true,
-                // Request Admin privileges via the "runas" verb
                 Verb = "runas"
             };
 
