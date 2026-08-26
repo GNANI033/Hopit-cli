@@ -3,6 +3,9 @@ from rich.console import Console
 from rich.table import Table
 import socket
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     console = Console()
     table = Table(border_style="cyan")

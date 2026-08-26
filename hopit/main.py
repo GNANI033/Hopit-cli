@@ -1594,6 +1594,22 @@ def execute_line(
     manager: str | None,
     session=None,
 ) -> bool:
+    try:
+        return _execute_line(line, shell, aliases, all_names, commands, manager, session)
+    except Exception as e:
+        console.print(f"[bold red]Error executing command: {e}[/bold red]")
+        return True
+
+
+def _execute_line(
+    line: str,
+    shell: str,
+    aliases: dict,
+    all_names: list[str],
+    commands: dict,
+    manager: str | None,
+    session=None,
+) -> bool:
     """Executes a single command line. Returns True to continue prompt loop, False to exit."""
     line_strip = line.strip()
     if not line_strip:
@@ -2869,6 +2885,9 @@ def execute_line(
     return True
 
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     # Clear the terminal on startup for a clean slate
     os.system("cls" if IS_WINDOWS else "clear")
@@ -2978,7 +2997,14 @@ def main():
             current_theme = get_active_theme()
             current_style = create_prompt_style(current_theme)
 
-            cwd = os.getcwd()
+            try:
+                cwd = os.getcwd()
+            except Exception:
+                try:
+                    os.chdir(os.path.expanduser("~"))
+                    cwd = os.getcwd()
+                except Exception:
+                    cwd = "/"
             home = os.path.expanduser("~")
             display_cwd = cwd.replace(home, "~", 1) if cwd.startswith(home) else cwd
             
@@ -3035,9 +3061,20 @@ def main():
             except KeyboardInterrupt:
                 console.print("\n[dim]stopped.[/dim]")
                 continue
+            except Exception as e:
+                console.print(f"[bold red]Error: {e}[/bold red]")
+                continue
 
         except KeyboardInterrupt:
             # Outer fallback catch-all for the prompt generation code
             continue
+        except Exception as e:
+            console.print(f"[bold red]An unexpected shell error occurred: {e}[/bold red]")
+            try:
+                os.chdir(os.path.expanduser("~"))
+            except Exception:
+                pass
+            continue
 
     console.print("[dim]bye[/dim]")
+

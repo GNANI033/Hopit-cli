@@ -29,6 +29,9 @@ def make_tree(directory_path, tree_node, current_depth=0, max_depth=3):
                 pass
             tree_node.add(f"📄 {entry.name}{size}", style=style)
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     target_dir = sys.argv[1] if len(sys.argv) > 1 else "."
     target_dir = os.path.abspath(os.path.expanduser(target_dir))

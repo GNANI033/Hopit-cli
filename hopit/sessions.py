@@ -443,6 +443,9 @@ def kill_session(target):
             console.print(f"[red]Error terminating session: {e}[/red]")
     return False
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) > 1:
         cmd = sys.argv[1].lower()

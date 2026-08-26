@@ -2,6 +2,9 @@ import os
 import sys
 from hopit.config import console
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         console.print("[yellow]Usage: touch <file_path>[/yellow]")

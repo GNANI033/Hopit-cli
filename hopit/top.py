@@ -36,6 +36,9 @@ def generate_table():
         
     return table
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     console = Console()
     console.print("[dim]Starting top monitoring. Press Ctrl+C to exit...[/dim]")

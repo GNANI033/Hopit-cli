@@ -330,6 +330,9 @@ def get_schedule_names() -> list[str]:
                     names.append(line.strip())
     return names
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     try:
         args = sys.argv[1:]

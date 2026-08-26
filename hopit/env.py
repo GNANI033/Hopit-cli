@@ -3,6 +3,9 @@ import sys
 from hopit.config import console
 from rich.table import Table
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     query = sys.argv[1].lower() if len(sys.argv) > 1 else None
     

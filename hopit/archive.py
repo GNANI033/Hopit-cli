@@ -80,6 +80,9 @@ def extract_archive(archive_name: str, dest_dir: str = "."):
         sys.exit(1)
 
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         print("Usage:")

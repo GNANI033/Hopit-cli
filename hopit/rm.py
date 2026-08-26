@@ -3,6 +3,9 @@ import sys
 import shutil
 from hopit.config import console
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     args = sys.argv[1:]
     flags = set()

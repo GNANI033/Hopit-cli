@@ -3,6 +3,9 @@ import sqlite3
 from hopit.config import console
 from rich.table import Table
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         print("Usage: sqlite <database_file> [SQL query]")

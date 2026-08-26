@@ -706,7 +706,10 @@ def handle_compose(args: list[str]):
 # Entry point when called via `python -m hopit.docker`
 # ─────────────────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
+def main():
     if len(sys.argv) < 2:
         print_docker_help()
         sys.exit(0)
@@ -714,13 +717,13 @@ if __name__ == "__main__":
     mode = sys.argv[1].lower()
     args = sys.argv[2:]
     
-    try:
-        if mode == "docker":
-            handle_docker(args)
-        elif mode == "compose":
-            handle_compose(args)
-        else:
-            # Fallback to docker
-            handle_docker(sys.argv[1:])
-    except KeyboardInterrupt:
-        sys.exit(0)
+    if mode == "docker":
+        handle_docker(args)
+    elif mode == "compose":
+        handle_compose(args)
+    else:
+        # Fallback to docker
+        handle_docker(sys.argv[1:])
+
+if __name__ == "__main__":
+    main()

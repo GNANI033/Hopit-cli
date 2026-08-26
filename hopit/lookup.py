@@ -287,6 +287,9 @@ def build_dns_records_table(dns_records, target):
             
     return table, found_any
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         print("Usage: lookup [A|AAAA|CNAME|MX|TXT|NS|all] <host_or_ip>")

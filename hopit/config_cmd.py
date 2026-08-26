@@ -22,6 +22,9 @@ def save_config(config):
     except Exception:
         return False
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     from rich.console import Console
     from hopit.config import detect_editor, detect_package_manager, get_active_theme_name, is_nerd_fonts_enabled, THEMES, console

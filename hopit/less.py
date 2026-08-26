@@ -3,6 +3,9 @@ import sys
 from hopit.config import console
 from rich.syntax import Syntax
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         console.print("[yellow]Usage: less <file_path>[/yellow]")

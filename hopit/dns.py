@@ -5,6 +5,9 @@ import shutil
 from rich.panel import Panel
 from rich.table import Table
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         print("Usage: dns <host_name>")

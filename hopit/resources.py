@@ -9,6 +9,9 @@ def get_bar(pct, width=20):
     color = "green" if pct < 60 else "yellow" if pct < 85 else "red"
     return f"[{color}]" + "█" * filled + "[/]" + "░" * empty
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     console = Console()
     

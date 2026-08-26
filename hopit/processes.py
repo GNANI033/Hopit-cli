@@ -3,6 +3,9 @@ import psutil
 from rich.console import Console
 from rich.table import Table
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     console = Console()
     sort_by = "cpu"

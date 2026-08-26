@@ -101,6 +101,9 @@ def inspect_process(proc):
             
     console.print(Panel(grid, title=f"[bold green]Process Info: {name} (PID: {pid})[/bold green]", border_style="cyan"))
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         print("Usage: process <pid_or_name>")

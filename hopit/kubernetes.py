@@ -509,8 +509,10 @@ KUBECTL_RESOURCE_TYPES: list[tuple[str, str]] = [
 # __main__ entry-point (for subprocess invocation)
 # ─────────────────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    import sys
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
+def main():
     from hopit.config import console
 
     if not kubectl_available():
@@ -527,5 +529,6 @@ if __name__ == "__main__":
     except FileNotFoundError:
         console.print(f"[red]Command not found: {cmd[0]}[/red]")
         sys.exit(1)
-    except KeyboardInterrupt:
-        sys.exit(0)
+
+if __name__ == "__main__":
+    main()

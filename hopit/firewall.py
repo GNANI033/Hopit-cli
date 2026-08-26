@@ -744,6 +744,9 @@ def handle_firewall_cli(args: list[str]):
     print(f"Unknown firewall action: {sub}. Usage: firewall [status|allow|block|delete|interactive]")
 
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     handle_firewall_cli(sys.argv[1:])
 

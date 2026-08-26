@@ -354,3 +354,22 @@ def with_privilege(argv: list[str], needs_sudo: bool) -> list[str]:
     if needs_sudo and os.geteuid() != 0:
         return ["sudo"] + argv
     return argv
+
+
+def safe_entrypoint(func):
+    import sys
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except KeyboardInterrupt:
+            # Clean exit on Ctrl+C
+            sys.exit(130)
+        except Exception as e:
+            try:
+                from hopit.config import console
+                console.print(f"[bold red]Error: {e}[/bold red]")
+            except Exception:
+                print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+    return wrapper
+

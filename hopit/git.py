@@ -9,6 +9,9 @@ def run_git(args):
     except FileNotFoundError:
         return -1, "", "git command not found on this system."
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         print("Usage: git <subcommand> [args...]")

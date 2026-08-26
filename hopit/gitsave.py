@@ -2,6 +2,9 @@ import sys
 import subprocess
 from hopit.config import console
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     if len(sys.argv) < 2:
         console.print("[bold red]Error:[/bold red] Please provide a commit message. Example: [yellow]gitsave fixed layout bug[/yellow]")

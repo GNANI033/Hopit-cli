@@ -112,6 +112,9 @@ def format_size(bytes_val):
         bytes_val /= 1024.0
     return f"{bytes_val:.1f} PB"
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     hostname = socket.gethostname()
     os_name = platform.system()

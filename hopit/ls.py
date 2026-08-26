@@ -234,6 +234,9 @@ def list_directory(target_path, flags):
                 
     return True
 
+from hopit.config import safe_entrypoint
+
+@safe_entrypoint
 def main():
     args = sys.argv[1:]
     flags = set()
