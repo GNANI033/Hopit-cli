@@ -637,6 +637,62 @@ def load_system_commands() -> dict[str, str]:
                                 cmds[name] = "System command"
                 except OSError:
                     pass
+        # Add common PowerShell cmdlets
+        ps_cmdlets = {
+            "get-process": "Get list of active processes",
+            "stop-process": "Terminate one or more running processes",
+            "start-process": "Start one or more processes",
+            "get-service": "Get status of services on a computer",
+            "start-service": "Start one or more stopped services",
+            "stop-service": "Stop one or more running services",
+            "restart-service": "Stop and then start one or more services",
+            "get-content": "Get the content of a file",
+            "set-content": "Write or replace content in a file",
+            "add-content": "Append content to a specified file",
+            "clear-content": "Delete the contents of a file",
+            "get-command": "Get all commands/cmdlets",
+            "get-help": "Get help/documentation for a command",
+            "get-item": "Get the item at a specified location",
+            "get-childitem": "Get items and child items in folder",
+            "copy-item": "Copy an item from one location to another",
+            "move-item": "Move an item from one location to another",
+            "remove-item": "Delete specified items/files",
+            "new-item": "Create a new item (file, folder, etc.)",
+            "rename-item": "Rename an item",
+            "get-location": "Get information about current working directory",
+            "set-location": "Set the current working directory",
+            "get-history": "Get a list of commands entered in session",
+            "clear-history": "Delete commands from command history",
+            "invoke-webrequest": "Get content from a web page",
+            "invoke-restmethod": "Send HTTP request and get structured data",
+            "get-netipaddress": "Get IP address configuration",
+            "get-netipinterface": "Get IP interface properties",
+            "get-netroute": "Get IP routing table",
+            "get-netadapter": "Get basic network adapter properties",
+            "test-netconnection": "Diagnose connection to a remote host",
+            "get-localuser": "Get local user accounts",
+            "get-localgroup": "Get local groups",
+            "new-localuser": "Create a local user account",
+            "remove-localuser": "Delete local user accounts",
+            "enable-localuser": "Enable local user account",
+            "disable-localuser": "Disable local user account",
+            "add-localgroupmember": "Add user to a local group",
+            "remove-localgroupmember": "Remove user from local group",
+            "get-eventlog": "Get events in event log",
+            "get-winevent": "Get events from event logs",
+            "out-file": "Send output to a file",
+            "select-object": "Select properties of an object",
+            "where-object": "Filter objects based on property values",
+            "sort-object": "Sort objects by property values",
+            "foreach-object": "Perform operation against each item",
+            "get-date": "Get the current date and time",
+            "get-host": "Get current host program",
+            "get-member": "Get members, properties, and methods of object",
+            "new-object": "Create instance of a .NET object",
+        }
+        for k, v in ps_cmdlets.items():
+            if k not in cmds:
+                cmds[k] = v
         return cmds
 
     # Linux / macOS

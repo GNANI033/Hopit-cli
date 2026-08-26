@@ -234,7 +234,45 @@ def remove_alias_from_rc(shell: str, name: str) -> str:
 
 def run_shell_line(line: str, shell: str):
     if IS_WINDOWS:
-        subprocess.run(line, shell=True)
+        # Detect if it's a PowerShell command/cmdlet or uses PowerShell features
+        is_ps = False
+        stripped = line.strip()
+        if stripped:
+            def is_powershell_verb_noun(w: str) -> bool:
+                if "-" in w and not w.startswith("-"):
+                    parts = w.split("-", 1)
+                    if parts[0].isalpha() and parts[1].isalnum():
+                        if w.lower() not in ("docker-compose", "git-commit", "apt-get", "npm-run", "tar-bz2"):
+                            return True
+                return False
+
+            # 1. Check if first word has a Verb-Noun pattern
+            words = stripped.split()
+            first_word = words[0].lower() if words else ""
+            if is_powershell_verb_noun(first_word):
+                is_ps = True
+            
+            # 2. Check for other words matching Verb-Noun pattern anywhere (e.g. in pipeline)
+            if not is_ps:
+                import re
+                tokens = re.findall(r'[a-zA-Z0-9_-]+', line)
+                for w in tokens:
+                    if is_powershell_verb_noun(w):
+                        is_ps = True
+                        break
+            
+            # 3. Check for PowerShell-specific syntax like $, $_, etc.
+            if not is_ps:
+                import re
+                if "$" in line and re.search(r'\$[a-zA-Z_]', line):
+                    is_ps = True
+                elif "{" in line and "}" in line and "$_" in line:
+                    is_ps = True
+
+        if is_ps:
+            subprocess.run(["powershell", "-NoProfile", "-Command", line])
+        else:
+            subprocess.run(line, shell=True)
     else:
         subprocess.run(line, shell=True, executable=shell)
 

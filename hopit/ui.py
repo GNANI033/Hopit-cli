@@ -88,6 +88,12 @@ SYSTEM_CMD_ARG_TYPES = {
     # ── Miscellaneous ──
     "export": ["env"], "unset": ["env"], "printenv": ["env"],
     "source": ["path"], ".": ["path"],
+    # ── PowerShell cmdlets ──
+    "get-process": ["process"], "stop-process": ["process"], "start-process": ["path"],
+    "get-service": ["service"], "start-service": ["service"], "stop-service": ["service"], "restart-service": ["service"],
+    "get-content": ["path"], "set-content": ["path"], "add-content": ["path"], "clear-content": ["path"],
+    "remove-item": ["path"], "copy-item": ["path"], "move-item": ["path"], "get-item": ["path"], "get-childitem": ["path"],
+    "test-netconnection": ["host"], "get-localuser": ["user"], "get-localgroup": ["group"],
 }
 
 
